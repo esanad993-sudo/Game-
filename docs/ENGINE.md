@@ -58,15 +58,23 @@ The runtime exposes everything the future **Layer 3 visual editor** needs:
 `getAllSkeletons()` (for the editor's form fields), `createModeDefinition()` and
 `validateModeDefinition()` (to build & check before saving).
 
-### Layer 3 — Visual Mode Editor (next step)
+### Layer 3 — Visual Mode Editor (built ✅)
 
-Not built yet. When built, it should:
-1. Call `getAllSkeletons()` to list available game genres.
-2. For the chosen skeleton, render a form from its `SkeletonMeta.settings`
-   (sliders, toggles, selects) + visuals + scoring + game-over rules.
-3. Produce a `ModeDefinition` via `createModeDefinition(...)`.
-4. Save it (e.g. a `GameMode` row in Prisma) and validate with `validateModeDefinition()`.
-5. Play it with `buildModeModule(def, questions, hooks)`.
+A working visual editor lives at **`/modes/editor`** (linked in the sidebar).
+It lets teachers & students create, tune, save, and play game modes with zero
+code. Files:
+
+- `src/game/editor/modeBuilder.ts` — pure, headless-testable editor logic
+  (`createDraft`, `applySetting`, `applyVisual`, `applyScoring`, `applyGameOver`,
+  `validate`, `changeSkeleton`).
+- `src/game/editor/modeStore.ts` — persistence (localStorage by default; storage
+  is injectable so it can be swapped for a Prisma/API store later).
+- `src/app/modes/editor/page.tsx` — the React editor UI + play overlay
+  (renders the game on canvas via `GameCanvas`; React only draws overlays).
+
+Flow: pick a skeleton → edit basics/settings/visuals/scoring/end-condition →
+live validation → save → play. Any new code skeleton automatically appears with
+editable controls because the form is driven by `SkeletonMeta.settings`.
 
 ---
 
@@ -115,14 +123,16 @@ npm test             # headless engine + mode tests (no browser needed)
 - **In the app:** the page `/play/racer` mounts the engine via the React
   component `src/game/integrations/GameCanvas.tsx`. React only renders overlays;
   the game loop never touches React (that's what keeps it smooth on a Chromebook).
+- **Mode editor:** open `/modes/editor` (or the 🎨 link in the sidebar) to create
+  and play your own modes.
 
 ---
 
 ## Known limits / next steps
 
 - Only the **Racer** skeleton exists so far. Add more genres (platformer, maze,
-  memory, typing) as code skeletons — each unlocks new data-defined modes for free.
-- The **visual mode editor** (Layer 3) is the natural next milestone.
+  memory, typing) as code skeletons — each automatically appears in the visual
+  editor and unlocks new data-defined modes for free.
 - **Live multiplayer** isn't in the engine yet (the old app has a rooms API); a
   sync layer (e.g. a tiny authoritative server that broadcasts game state) would
   be the next big feature for classroom "live game."

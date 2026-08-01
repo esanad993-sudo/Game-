@@ -413,6 +413,14 @@ function AppShell({ user, view, setView, onLogout }: {
               {sidebarOpen && <span>{item.label}</span>}
             </button>
           ))}
+          <a
+            href="/modes/editor"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm font-bold text-gf-warning hover:bg-white/10"
+            title="Create your own game modes"
+          >
+            <span className="text-xl">🎨</span>
+            {sidebarOpen && <span>Mode Editor</span>}
+          </a>
         </nav>
 
         {/* User info */}
@@ -490,6 +498,14 @@ function AppShell({ user, view, setView, onLogout }: {
                   <span>{item.label}</span>
                 </button>
               ))}
+              <a
+                href="/modes/editor"
+                onClick={() => setMobileMenuOpen(false)}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gf-warning text-sm font-bold"
+              >
+                <span className="text-2xl">🎨</span>
+                <span>Mode Editor</span>
+              </a>
               <button
                 onClick={onLogout}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/50 hover:text-white/80 text-sm font-bold"
