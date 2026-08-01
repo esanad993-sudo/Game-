@@ -1,5 +1,5 @@
 // Game mode types
-export type GameModeId = 'classic' | 'racing'
+export type GameModeId = 'classic' | 'racing' | 'turbo-rush'
 
 export interface GameModeConfig {
   id: GameModeId

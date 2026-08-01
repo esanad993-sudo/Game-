@@ -27,6 +27,19 @@ export const GAME_MODES: Record<GameModeId, GameModeConfig> = {
     difficulty: 'easy',
     thumbnail: '🏎️',
   },
+  'turbo-rush': {
+    id: 'turbo-rush',
+    name: 'TurboRush',
+    description: 'Full-throttle racing game — steer, boost, and answer questions to stay ahead of the pack!',
+    icon: '🏁',
+    color: 'bg-gf-warning',
+    playerCount: { min: 1, max: 50 },
+    hasTimer: true,
+    hasPowerUps: true,
+    isTeamMode: false,
+    difficulty: 'easy',
+    thumbnail: '🏁',
+  },
 }
 
 export function getGameMode(id: GameModeId): GameModeConfig {
