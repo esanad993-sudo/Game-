@@ -1,0 +1,271 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users & Auth ───
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String  @id @default(cuid())
+  sessionToken String  @unique
+  userId       String
+  expires      DateTime
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          String    @default("student") // "teacher" | "student"
+  coins         Int       @default(0)
+  streak        Int       @default(0)        // daily login streak
+  lastLoginAt   DateTime?
+  bio           String?
+  avatarColor   String    @default("#FFD23F") // car/skin color
+  carSkin       String    @default("default")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts       Account[]
+  sessions       Session[]
+  questionSets   QuestionSet[]
+  hostedRooms    GameRoom[]
+  homeworks      Homework[]
+  submissions    Submission[]
+  playerRecords  Player[]
+  achievements   UserAchievement[]
+  ownedItems     UserItem[]
+  friendsFrom    Friendship[] @relation("UserFriends")
+  friendsTo      Friendship[] @relation("UserFriendOf")
+  notifications  Notification[]
+  gameResults    GameResult[]
+}
+
+// ─── Question Sets ───
+
+model QuestionSet {
+  id          String     @id @default(cuid())
+  title       String
+  subject     String?
+  gradeLevel  String?
+  description String?
+  isPublic    Boolean    @default(false)
+  creatorId   String
+  creator     User       @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  questions   Question[]
+  gameRooms   GameRoom[]
+  homeworks   Homework[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Question {
+  id          String      @id @default(cuid())
+  setId       String
+  set         QuestionSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  text        String
+  choices     String      // JSON string[]
+  correctIdx  Int         // 0-based index
+  explanation String?
+  imageUrl    String?
+  order       Int         @default(0)
+  createdAt   DateTime    @default(now())
+}
+
+// ─── Game Rooms (Live Play) ───
+
+model GameRoom {
+  id        String    @id @default(cuid())
+  code      String    @unique // 6-char join code
+  setId     String
+  set       QuestionSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  hostId    String
+  host      User       @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  status    String    @default("lobby") // "lobby" | "playing" | "ended"
+  mode      String    @default("heart") // "slow" | "heart" | "classic" | "battle"
+  maxPlayers Int      @default(50)
+  timeLimit  Int?     // seconds, null = unlimited
+  goalScore  Int?     // first to reach wins, null = no goal
+  isTeamMode Boolean  @default(false)
+  players   Player[]
+  createdAt DateTime  @default(now())
+  endedAt   DateTime?
+}
+
+model Player {
+  id         String    @id @default(cuid())
+  roomId     String
+  room       GameRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name       String
+  score      Int       @default(0)
+  correct    Int       @default(0)
+  wrong      Int       @default(0)
+  bestStreak Int       @default(0)
+  coins      Int       @default(0)
+  isHost     Boolean   @default(false)
+  joinedAt   DateTime  @default(now())
+}
+
+// ─── Homework ───
+
+model Homework {
+  id          String       @id @default(cuid())
+  setId       String
+  set         QuestionSet  @relation(fields: [setId], references: [id], onDelete: Cascade)
+  teacherId   String
+  teacher     User         @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  dueDate     DateTime?
+  mode        String       @default("heart")
+  submissions Submission[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Submission {
+  id          String    @id @default(cuid())
+  homeworkId  String
+  homework    Homework  @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  studentId   String?
+  student     User?     @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  playerName  String
+  score       Int       @default(0)
+  correct     Int       @default(0)
+  wrong       Int       @default(0)
+  bestStreak  Int       @default(0)
+  coins       Int       @default(0)
+  mistakes    String    @default("[]") // JSON
+  submittedAt DateTime  @default(now())
+}
+
+// ─── Game Results (for history/analytics) ───
+
+model GameResult {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gameType    String   // "solo" | "live" | "homework"
+  setId       String?
+  score       Int
+  correct     Int
+  wrong       Int
+  bestStreak  Int
+  coinsEarned Int
+  duration    Int?     // seconds
+  createdAt   DateTime @default(now())
+}
+
+// ─── Achievements ───
+
+model Achievement {
+  id          String            @id @default(cuid())
+  key         String            @unique
+  name        String
+  description String
+  icon        String            // emoji
+  category    String            // "gameplay" | "social" | "streak" | "collection"
+  requirement Int               // e.g., "answer 100 questions correctly"
+  userAchievements UserAchievement[]
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  unlockedAt    DateTime    @default(now())
+
+  @@unique([userId, achievementId])
+}
+
+// ─── Shop Items ───
+
+model ShopItem {
+  id          String     @id @default(cuid())
+  key         String     @unique
+  name        String
+  description String
+  category    String     // "car_skin" | "power_up" | "trail" | "badge"
+  price       Int
+  icon        String     // emoji
+  rarity      String     @default("common") // "common" | "rare" | "epic" | "legendary"
+  isActive    Boolean    @default(true)
+  userItems   UserItem[]
+}
+
+model UserItem {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId    String
+  item      ShopItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  equipped  Boolean   @default(false)
+  purchasedAt DateTime @default(now())
+
+  @@unique([userId, itemId])
+}
+
+// ─── Friends ───
+
+model Friendship {
+  id          String   @id @default(cuid())
+  fromUserId  String
+  fromUser    User     @relation("UserFriends", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUserId    String
+  toUser      User     @relation("UserFriendOf", fields: [toUserId], references: [id], onDelete: Cascade)
+  status      String   @default("pending") // "pending" | "accepted" | "blocked"
+  createdAt   DateTime @default(now())
+
+  @@unique([fromUserId, toUserId])
+}
+
+// ─── Notifications ───
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // "friend_request" | "achievement" | "homework" | "game_invite"
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+}

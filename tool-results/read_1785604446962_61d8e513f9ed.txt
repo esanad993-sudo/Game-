@@ -1,0 +1,1858 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import { getAllGameModes, getGameMode } from '@/lib/engine/registry'
+     6→import type { GameModeId, GameModeConfig } from '@/lib/engine/types'
+     7→
+     8→// ─── Types ───
+     9→type View = 'home' | 'sets' | 'create-set' | 'live' | 'solo' | 'mode-select' | 'homework' | 'shop' | 'achievements' | 'friends' | 'profile'
+    10→type UserRole = 'teacher' | 'student'
+    11→
+    12→interface User {
+    13→  id: string
+    14→  name: string
+    15→  email: string
+    16→  role: UserRole
+    17→  coins: number
+    18→  streak: number
+    19→  avatarColor: string
+    20→  carSkin: string
+    21→  bio?: string
+    22→}
+    23→
+    24→interface QuestionSet {
+    25→  id: string
+    26→  title: string
+    27→  subject?: string
+    28→  gradeLevel?: string
+    29→  description?: string
+    30→  isPublic: boolean
+    31→  creatorId: string
+    32→  creator?: { name: string }
+    33→  _count?: { questions: number }
+    34→  questions?: Question[]
+    35→}
+    36→
+    37→interface Question {
+    38→  id: string
+    39→  text: string
+    40→  choices: string
+    41→  correctIdx: number
+    42→  explanation?: string
+    43→  order: number
+    44→}
+    45→
+    46→interface ShopItem {
+    47→  id: string
+    48→  key: string
+    49→  name: string
+    50→  description: string
+    51→  category: string
+    52→  price: number
+    53→  icon: string
+    54→  rarity: string
+    55→}
+    56→
+    57→interface Achievement {
+    58→  id: string
+    59→  key: string
+    60→  name: string
+    61→  description: string
+    62→  icon: string
+    63→  category: string
+    64→  requirement: number
+    65→}
+    66→
+    67→interface UserAchievement {
+    68→  id: string
+    69→  achievementId: string
+    70→  achievement: Achievement
+    71→  unlockedAt: string
+    72→}
+    73→
+    74→interface GameResult {
+    75→  id: string
+    76→  gameType: string
+    77→  score: number
+    78→  correct: number
+    79→  wrong: number
+    80→  bestStreak: number
+    81→  coinsEarned: number
+    82→  duration?: number
+    83→  createdAt: string
+    84→}
+    85→
+    86→interface Homework {
+    87→  id: string
+    88→  title: string
+    89→  description?: string
+    90→  dueDate?: string
+    91→  mode: string
+    92→  set?: { title: string; subject?: string }
+    93→  _count?: { submissions: number }
+    94→}
+    95→
+    96→// ─── API helpers ───
+    97→const api = {
+    98→  get: async (url: string) => {
+    99→    const res = await fetch(url)
+   100→    if (!res.ok) throw new Error(`GET ${url} failed`)
+   101→    return res.json()
+   102→  },
+   103→  post: async (url: string, data: any) => {
+   104→    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   105→    if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `POST ${url} failed`) }
+   106→    return res.json()
+   107→  },
+   108→  patch: async (url: string, data: any) => {
+   109→    const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   110→    if (!res.ok) throw new Error(`PATCH ${url} failed`)
+   111→    return res.json()
+   112→  },
+   113→  del: async (url: string) => {
+   114→    const res = await fetch(url, { method: 'DELETE' })
+   115→    if (!res.ok) throw new Error(`DELETE ${url} failed`)
+   116→    return res.json()
+   117→  },
+   118→}
+   119→
+   120→// ─── Safe user defaults ───
+   121→function normalizeUser(u: any): User {
+   122→  return {
+   123→    id: u.id ?? '',
+   124→    name: u.name ?? 'Player',
+   125→    email: u.email ?? '',
+   126→    role: u.role ?? 'student',
+   127→    coins: u.coins ?? 0,
+   128→    streak: u.streak ?? 0,
+   129→    avatarColor: u.avatarColor ?? '#14B8A6',
+   130→    carSkin: u.carSkin ?? 'default',
+   131→    bio: u.bio ?? '',
+   132→  }
+   133→}
+   134→
+   135→// ─── Main App ───
+   136→export default function Home() {
+   137→  const [user, setUser] = useState<User | null>(null)
+   138→  const [view, setView] = useState<View>('home')
+   139→  const [mounted, setMounted] = useState(false)
+   140→
+   141→  useEffect(() => {
+   142→    // Read from localStorage on mount - this is intentional initialization
+   143→    const saved = localStorage.getItem('gameforge_user') || localStorage.getItem('turborush_user')
+   144→    if (saved) {
+   145→      try {
+   146→        const parsed = JSON.parse(saved)
+   147→        // Use a microtask to avoid synchronous setState in effect
+   148→        queueMicrotask(() => setUser(normalizeUser(parsed)))
+   149→      } catch {}
+   150→    }
+   151→    queueMicrotask(() => setMounted(true))
+   152→  }, [])
+   153→
+   154→  const login = (u: User) => {
+   155→    const safe = normalizeUser(u)
+   156→    setUser(safe)
+   157→    localStorage.setItem('gameforge_user', JSON.stringify(safe))
+   158→  }
+   159→
+   160→  const logout = () => {
+   161→    setUser(null)
+   162→    localStorage.removeItem('gameforge_user')
+   163→    localStorage.removeItem('turborush_user')
+   164→    setView('home')
+   165→  }
+   166→
+   167→  if (!mounted) {
+   168→    return (
+   169→      <div className="min-h-screen flex items-center justify-center gf-bg">
+   170→        <motion.div
+   171→          animate={{ scale: [1, 1.1, 1] }}
+   172→          transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+   173→        >
+   174→          <img src="/logo.jpeg" alt="GameForge" className="w-20 h-20 rounded-2xl" />
+   175→        </motion.div>
+   176→      </div>
+   177→    )
+   178→  }
+   179→
+   180→  if (!user) {
+   181→    return <AuthScreen onLogin={login} />
+   182→  }
+   183→
+   184→  return (
+   185→    <AppShell user={user} view={view} setView={setView} onLogout={logout} />
+   186→  )
+   187→}
+   188→
+   189→// ─── Auth Screen ───
+   190→function AuthScreen({ onLogin }: { onLogin: (u: User) => void }) {
+   191→  const [mode, setMode] = useState<'login' | 'register'>('login')
+   192→  const [name, setName] = useState('')
+   193→  const [email, setEmail] = useState('')
+   194→  const [password, setPassword] = useState('')
+   195→  const [role, setRole] = useState<UserRole>('student')
+   196→  const [error, setError] = useState('')
+   197→  const [loading, setLoading] = useState(false)
+   198→
+   199→  const handleSubmit = async (e: React.FormEvent) => {
+   200→    e.preventDefault()
+   201→    setError('')
+   202→    setLoading(true)
+   203→
+   204→    try {
+   205→      if (mode === 'register') {
+   206→        const result = await api.post('/api/auth/register', { name, email, password, role })
+   207→        onLogin(result)
+   208→      } else {
+   209→        const result = await api.post('/api/auth/login', { email, password }).catch(() => null)
+   210→        if (!result) {
+   211→          setError('Invalid email or password')
+   212→          setLoading(false)
+   213→          return
+   214→        }
+   215→        onLogin(result)
+   216→      }
+   217→    } catch (err: any) {
+   218→      setError(err.message || 'Something went wrong')
+   219→    } finally {
+   220→      setLoading(false)
+   221→    }
+   222→  }
+   223→
+   224→  return (
+   225→    <div className="min-h-screen gf-bg flex items-center justify-center p-4">
+   226→      <motion.div
+   227→        initial={{ scale: 0.9, opacity: 0 }}
+   228→        animate={{ scale: 1, opacity: 1 }}
+   229→        className="gf-card p-8 w-full max-w-md"
+   230→      >
+   231→        {/* Logo */}
+   232→        <div className="text-center mb-6">
+   233→          <motion.div
+   234→            animate={{ y: [0, -8, 0] }}
+   235→            transition={{ repeat: Infinity, duration: 2 }}
+   236→            className="mb-2 flex justify-center"
+   237→          >
+   238→            <img src="/logo.jpeg" alt="GameForge" className="w-16 h-16 rounded-2xl" />
+   239→          </motion.div>
+   240→          <h1 className="gf-font-display text-3xl text-gf-dark">GameForge</h1>
+   241→          <p className="text-gf-dark/60 font-bold mt-1">Create & Play Quiz Games</p>
+   242→        </div>
+   243→
+   244→        {/* Toggle */}
+   245→        <div className="flex gap-2 mb-6">
+   246→          <button
+   247→            onClick={() => setMode('login')}
+   248→            className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${
+   249→              mode === 'login'
+   250→                ? 'bg-gf-dark text-white'
+   251→                : 'bg-gf-light text-gf-dark border-2 border-gf-dark'
+   252→            }`}
+   253→          >
+   254→            Sign In
+   255→          </button>
+   256→          <button
+   257→            onClick={() => setMode('register')}
+   258→            className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${
+   259→              mode === 'register'
+   260→                ? 'bg-gf-dark text-white'
+   261→                : 'bg-gf-light text-gf-dark border-2 border-gf-dark'
+   262→            }`}
+   263→          >
+   264→            Create Account
+   265→          </button>
+   266→        </div>
+   267→
+   268→        <form onSubmit={handleSubmit} className="space-y-4">
+   269→          {mode === 'register' && (
+   270→            <div>
+   271→              <label className="text-gf-dark font-bold text-sm mb-1 block">Display Name</label>
+   272→              <input
+   273→                type="text"
+   274→                value={name}
+   275→                onChange={e => setName(e.target.value)}
+   276→                className="gf-input"
+   277→                placeholder="Your name"
+   278→                required
+   279→              />
+   280→            </div>
+   281→          )}
+   282→
+   283→          <div>
+   284→            <label className="text-gf-dark font-bold text-sm mb-1 block">Email</label>
+   285→            <input
+   286→              type="email"
+   287→              value={email}
+   288→              onChange={e => setEmail(e.target.value)}
+   289→              className="gf-input"
+   290→              placeholder="you@school.edu"
+   291→              required
+   292→            />
+   293→          </div>
+   294→
+   295→          <div>
+   296→            <label className="text-gf-dark font-bold text-sm mb-1 block">Password</label>
+   297→            <input
+   298→              type="password"
+   299→              value={password}
+   300→              onChange={e => setPassword(e.target.value)}
+   301→              className="gf-input"
+   302→              placeholder="••••••••"
+   303→              required
+   304→            />
+   305→          </div>
+   306→
+   307→          {mode === 'register' && (
+   308→            <div>
+   309→              <label className="text-gf-dark font-bold text-sm mb-2 block">I am a...</label>
+   310→              <div className="flex gap-3">
+   311→                <button
+   312→                  type="button"
+   313→                  onClick={() => setRole('student')}
+   314→                  className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all border-2 ${
+   315→                    role === 'student'
+   316→                      ? 'bg-gf-teal border-gf-dark text-white'
+   317→                      : 'bg-white border-gf-dark/20 text-gf-dark/60'
+   318→                  }`}
+   319→                >
+   320→                  🎓 Student
+   321→                </button>
+   322→                <button
+   323→                  type="button"
+   324→                  onClick={() => setRole('teacher')}
+   325→                  className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all border-2 ${
+   326→                    role === 'teacher'
+   327→                      ? 'bg-gf-warning border-gf-dark text-gf-dark'
+   328→                      : 'bg-white border-gf-dark/20 text-gf-dark/60'
+   329→                  }`}
+   330→                >
+   331→                  👩‍🏫 Teacher
+   332→                </button>
+   333→              </div>
+   334→            </div>
+   335→          )}
+   336→
+   337→          {error && (
+   338→            <div className="bg-gf-danger/10 text-gf-danger p-3 rounded-xl text-sm font-bold">{error}</div>
+   339→          )}
+   340→
+   341→          <button
+   342→            type="submit"
+   343→            disabled={loading}
+   344→            className="gf-btn w-full"
+   345→          >
+   346→            {loading ? '⏳' : mode === 'login' ? '🚀 Sign In' : '✨ Create Account'}
+   347→          </button>
+   348→        </form>
+   349→
+   350→        <p className="text-center text-gf-dark/40 text-xs mt-4 font-bold">
+   351→          By signing in, you agree to have fun and learn!
+   352→        </p>
+   353→      </motion.div>
+   354→    </div>
+   355→  )
+   356→}
+   357→
+   358→// ─── App Shell ───
+   359→function AppShell({ user, view, setView, onLogout }: {
+   360→  user: User
+   361→  view: View
+   362→  setView: (v: View) => void
+   363→  onLogout: () => void
+   364→}) {
+   365→  const [sidebarOpen, setSidebarOpen] = useState(true)
+   366→  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+   367→
+   368→  const navItems: { key: View; label: string; icon: string; teacher?: boolean; student?: boolean }[] = [
+   369→    { key: 'home', label: 'Dashboard', icon: '🏠' },
+   370→    { key: 'mode-select', label: 'Play', icon: '🎮' },
+   371→    { key: 'live', label: 'Live Game', icon: '📡' },
+   372→    { key: 'sets', label: 'Question Sets', icon: '📚' },
+   373→    { key: 'homework', label: 'Homework', icon: '📝' },
+   374→    { key: 'shop', label: 'Shop', icon: '🛒', student: true },
+   375→    { key: 'achievements', label: 'Achievements', icon: '🏆', student: true },
+   376→    { key: 'friends', label: 'Friends', icon: '👥', student: true },
+   377→    { key: 'profile', label: 'Profile', icon: '⚙️' },
+   378→  ]
+   379→
+   380→  const filteredNav = navItems.filter(item => {
+   381→    if (user.role === 'teacher' && item.student && !item.teacher) return false
+   382→    return true
+   383→  })
+   384→
+   385→  return (
+   386→    <div className="min-h-screen gf-bg flex">
+   387→      {/* Desktop Sidebar */}
+   388→      <aside className={`hidden lg:flex flex-col ${sidebarOpen ? 'w-64' : 'w-20'} bg-gf-surface text-white transition-all duration-300 shrink-0`}>
+   389→        <div className="p-4 flex items-center gap-3 border-b border-white/10">
+   390→          <motion.div animate={{ y: [0, -4, 0] }} transition={{ repeat: Infinity, duration: 2 }}>
+   391→            <img src="/logo.jpeg" alt="GameForge" className="w-9 h-9 rounded-lg" />
+   392→          </motion.div>
+   393→          {sidebarOpen && (
+   394→            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+   395→              <h1 className="gf-font-display text-lg leading-tight">GameForge</h1>
+   396→              <p className="text-[10px] text-gf-teal font-bold">Quiz Platform</p>
+   397→            </motion.div>
+   398→          )}
+   399→        </div>
+   400→
+   401→        <nav className="flex-1 p-2 space-y-1">
+   402→          {filteredNav.map(item => (
+   403→            <button
+   404→              key={item.key}
+   405→              onClick={() => setView(item.key)}
+   406→              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm font-bold ${
+   407→                view === item.key
+   408→                  ? 'bg-gf-teal text-white'
+   409→                  : 'text-white/70 hover:bg-white/10 hover:text-white'
+   410→              }`}
+   411→            >
+   412→              <span className="text-xl">{item.icon}</span>
+   413→              {sidebarOpen && <span>{item.label}</span>}
+   414→            </button>
+   415→          ))}
+   416→        </nav>
+   417→
+   418→        {/* User info */}
+   419→        <div className="p-3 border-t border-white/10">
+   420→          <div className="flex items-center gap-2">
+   421→            <div
+   422→              className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+   423→              style={{ backgroundColor: user.avatarColor || '#14B8A6' }}
+   424→            >
+   425→              {user.name[0].toUpperCase()}
+   426→            </div>
+   427→            {sidebarOpen && (
+   428→              <div className="min-w-0 flex-1">
+   429→                <p className="text-sm font-bold truncate">{user.name}</p>
+   430→                <div className="flex items-center gap-1 text-xs text-gf-warning">
+   431→                  <span>🪙</span> <span>{user.coins.toLocaleString()}</span>
+   432→                </div>
+   433→              </div>
+   434→            )}
+   435→          </div>
+   436→          {sidebarOpen && (
+   437→            <button
+   438→              onClick={onLogout}
+   439→              className="mt-2 w-full text-xs text-white/50 hover:text-white/80 transition-colors font-bold"
+   440→            >
+   441→              Sign Out
+   442→            </button>
+   443→          )}
+   444→        </div>
+   445→
+   446→        {/* Collapse toggle */}
+   447→        <button
+   448→          onClick={() => setSidebarOpen(!sidebarOpen)}
+   449→          className="p-2 text-white/30 hover:text-white/60 transition-colors text-xs"
+   450→        >
+   451→          {sidebarOpen ? '◀' : '▶'}
+   452→        </button>
+   453→      </aside>
+   454→
+   455→      {/* Mobile Header */}
+   456→      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-gf-surface text-white px-4 py-3 flex items-center justify-between">
+   457→        <div className="flex items-center gap-2">
+   458→          <img src="/logo.jpeg" alt="GameForge" className="w-7 h-7 rounded-lg" />
+   459→          <span className="gf-font-display text-sm">GameForge</span>
+   460→        </div>
+   461→        <div className="flex items-center gap-3">
+   462→          <span className="text-gf-warning text-sm font-bold">🪙 {user.coins.toLocaleString()}</span>
+   463→          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-2xl">
+   464→            {mobileMenuOpen ? '✕' : '☰'}
+   465→          </button>
+   466→        </div>
+   467→      </div>
+   468→
+   469→      {/* Mobile Menu Overlay */}
+   470→      <AnimatePresence>
+   471→        {mobileMenuOpen && (
+   472→          <motion.div
+   473→            initial={{ opacity: 0, x: -300 }}
+   474→            animate={{ opacity: 1, x: 0 }}
+   475→            exit={{ opacity: 0, x: -300 }}
+   476→            className="lg:hidden fixed inset-0 z-40 bg-gf-surface pt-16"
+   477→          >
+   478→            <nav className="p-4 space-y-2">
+   479→              {filteredNav.map(item => (
+   480→                <button
+   481→                  key={item.key}
+   482→                  onClick={() => { setView(item.key); setMobileMenuOpen(false) }}
+   483→                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-bold ${
+   484→                    view === item.key
+   485→                      ? 'bg-gf-teal text-white'
+   486→                      : 'text-white/70 hover:bg-white/10'
+   487→                  }`}
+   488→                >
+   489→                  <span className="text-2xl">{item.icon}</span>
+   490→                  <span>{item.label}</span>
+   491→                </button>
+   492→              ))}
+   493→              <button
+   494→                onClick={onLogout}
+   495→                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/50 hover:text-white/80 text-sm font-bold"
+   496→              >
+   497→                <span className="text-2xl">🚪</span>
+   498→                <span>Sign Out</span>
+   499→              </button>
+   500→            </nav>
+   501→          </motion.div>
+   502→        )}
+   503→      </AnimatePresence>
+   504→
+   505→      {/* Main Content */}
+   506→      <main className="flex-1 min-h-screen lg:pt-0 pt-14 overflow-y-auto">
+   507→        <div className="p-4 lg:p-8 max-w-7xl mx-auto">
+   508→          <AnimatePresence mode="wait">
+   509→            <motion.div
+   510→              key={view}
+   511→              initial={{ opacity: 0, y: 20 }}
+   512→              animate={{ opacity: 1, y: 0 }}
+   513→              exit={{ opacity: 0, y: -20 }}
+   514→              transition={{ duration: 0.2 }}
+   515→            >
+   516→              {view === 'home' && <DashboardView user={user} setView={setView} />}
+   517→              {view === 'mode-select' && <ModeSelectView user={user} setView={setView} />}
+   518→              {view === 'solo' && <SoloView user={user} setView={setView} />}
+   519→              {view === 'live' && <LiveView user={user} />}
+   520→              {view === 'sets' && <SetsView user={user} setView={setView} />}
+   521→              {view === 'create-set' && <CreateSetView user={user} setView={setView} />}
+   522→              {view === 'homework' && <HomeworkView user={user} />}
+   523→              {view === 'shop' && <ShopView user={user} />}
+   524→              {view === 'achievements' && <AchievementsView user={user} />}
+   525→              {view === 'friends' && <FriendsView user={user} />}
+   526→              {view === 'profile' && <ProfileView user={user} onLogout={onLogout} />}
+   527→            </motion.div>
+   528→          </AnimatePresence>
+   529→        </div>
+   530→      </main>
+   531→    </div>
+   532→  )
+   533→}
+   534→
+   535→// ─── Game Mode Selector View ───
+   536→function ModeSelectView({ user, setView }: { user: User; setView: (v: View) => void }) {
+   537→  const modes = getAllGameModes()
+   538→
+   539→  const difficultyColors: Record<string, string> = {
+   540→    easy: 'bg-gf-success/10 text-gf-success',
+   541→    medium: 'bg-gf-warning/10 text-gf-warning',
+   542→    hard: 'bg-gf-danger/10 text-gf-danger',
+   543→  }
+   544→
+   545→  const modeColorMap: Record<string, string> = {
+   546→    'classic': 'from-gf-teal to-gf-blue',
+   547→    'tower-defense': 'from-gf-blue to-gf-purple',
+   548→    'racing': 'from-gf-purple to-gf-pink-500',
+   549→    'battle-royale': 'from-gf-danger to-gf-orange',
+   550→    'gold-rush': 'from-gf-warning to-gf-yellow-300',
+   551→  }
+   552→
+   553→  return (
+   554→    <div className="space-y-6">
+   555→      <div className="flex items-center justify-between">
+   556→        <div>
+   557→          <h1 className="gf-font-display text-2xl text-gf-dark">🎮 Choose Your Game Mode</h1>
+   558→          <p className="text-gf-dark/60 font-bold">Pick a mode and start playing!</p>
+   559→        </div>
+   560→        <button onClick={() => setView('home')} className="gf-btn gf-btn-outline text-sm">← Back</button>
+   561→      </div>
+   562→
+   563→      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
+   564→        {modes.map((m) => (
+   565→          <motion.div
+   566→            key={m.id}
+   567→            whileHover={{ y: -4, scale: 1.02 }}
+   568→            whileTap={{ scale: 0.98 }}
+   569→            className="gf-card gf-stat-card overflow-hidden cursor-pointer"
+   570→            onClick={() => setView('solo')}
+   571→          >
+   572→            {/* Gradient header */}
+   573→            <div className={`bg-gradient-to-r ${modeColorMap[m.id] || 'from-gf-teal to-gf-blue'} p-5 text-white`}>
+   574→              <div className="flex items-center justify-between">
+   575→                <span className="text-4xl">{m.icon}</span>
+   576→                <span className={`text-xs font-bold px-2 py-1 rounded-full ${difficultyColors[m.difficulty]}`}>
+   577→                  {m.difficulty.toUpperCase()}
+   578→                </span>
+   579→              </div>
+   580→              <h2 className="gf-font-display text-xl mt-3">{m.name}</h2>
+   581→              <p className="text-white/80 text-sm mt-1">{m.description}</p>
+   582→            </div>
+   583→            {/* Info footer */}
+   584→            <div className="p-4 flex items-center justify-between">
+   585→              <div className="flex items-center gap-3 text-xs text-gf-dark/60 font-bold">
+   586→                <span>👥 {m.playerCount.min}-{m.playerCount.max}</span>
+   587→                {m.hasTimer && <span>⏱️ Timed</span>}
+   588→                {m.hasPowerUps && <span>⚡ Power-Ups</span>}
+   589→              </div>
+   590→              <button className="gf-btn text-xs py-2 px-4">
+   591→                Play →
+   592→              </button>
+   593→            </div>
+   594→          </motion.div>
+   595→        ))}
+   596→      </div>
+   597→    </div>
+   598→  )
+   599→}
+   600→
+   601→// ─── Dashboard View ───
+   602→function DashboardView({ user, setView }: { user: User; setView: (v: View) => void }) {
+   603→  const [stats, setStats] = useState<{ gamesPlayed: number; totalCorrect: number; totalCoins: number; bestStreak: number } | null>(null)
+   604→  const [recentGames, setRecentGames] = useState<GameResult[]>([])
+   605→  const [homeworks, setHomeworks] = useState<Homework[]>([])
+   606→
+   607→  useEffect(() => {
+   608→    api.get(`/api/game-results?userId=${user.id}`).then((data: GameResult[]) => {
+   609→      setRecentGames(data.slice(0, 5))
+   610→      setStats({
+   611→        gamesPlayed: data.length,
+   612→        totalCorrect: data.reduce((s, g) => s + g.correct, 0),
+   613→        totalCoins: data.reduce((s, g) => s + g.coinsEarned, 0),
+   614→        bestStreak: Math.max(0, ...data.map(g => g.bestStreak)),
+   615→      })
+   616→    }).catch(() => {})
+   617→    api.get('/api/homework').then(setHomeworks).catch(() => {})
+   618→  }, [user.id])
+   619→
+   620→  const isTeacher = user.role === 'teacher'
+   621→  const gameModes = getAllGameModes()
+   622→
+   623→  return (
+   624→    <div className="space-y-6">
+   625→      {/* Welcome */}
+   626→      <div className="gf-card p-6 lg:p-8">
+   627→        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+   628→          <div>
+   629→            <h1 className="gf-font-display text-2xl lg:text-3xl text-gf-dark">
+   630→              {isTeacher ? '👩‍🏫' : '👋'} Hey, {user.name}!
+   631→            </h1>
+   632→            <p className="text-gf-dark/60 font-bold mt-1">
+   633→              {isTeacher
+   634→                ? 'Ready to create an engaging lesson?'
+   635→                : 'Ready to play and learn?'}
+   636→            </p>
+   637→          </div>
+   638→          <div className="flex gap-3">
+   639→            {isTeacher ? (
+   640→              <>
+   641→                <button onClick={() => setView('live')} className="gf-btn text-sm">📡 Host Game</button>
+   642→                <button onClick={() => setView('create-set')} className="gf-btn gf-btn-green text-sm">📚 Create Set</button>
+   643→              </>
+   644→            ) : (
+   645→              <>
+   646→                <button onClick={() => setView('mode-select')} className="gf-btn text-sm">🎮 Play</button>
+   647→                <button onClick={() => setView('shop')} className="gf-btn gf-btn-purple text-sm">🛒 Shop</button>
+   648→              </>
+   649→            )}
+   650→          </div>
+   651→        </div>
+   652→      </div>
+   653→
+   654→      {/* Game Modes Row */}
+   655→      <div>
+   656→        <h2 className="gf-font-display text-lg text-gf-dark mb-3">🎮 Game Modes</h2>
+   657→        <div className="flex gap-4 overflow-x-auto pb-3 gf-scrollbar">
+   658→          {gameModes.map((m) => (
+   659→            <motion.button
+   660→              key={m.id}
+   661→              whileHover={{ y: -3, scale: 1.03 }}
+   662→              whileTap={{ scale: 0.97 }}
+   663→              onClick={() => setView('solo')}
+   664→              className="gf-card p-4 min-w-[180px] shrink-0 text-left"
+   665→            >
+   666→              <span className="text-3xl">{m.icon}</span>
+   667→              <h3 className="gf-font-display text-sm text-gf-dark mt-2">{m.name}</h3>
+   668→              <p className="text-xs text-gf-dark/50 mt-1 line-clamp-2">{m.description}</p>
+   669→              <span className="gf-chip text-[10px] mt-2">{m.difficulty}</span>
+   670→            </motion.button>
+   671→          ))}
+   672→        </div>
+   673→      </div>
+   674→
+   675→      {/* Stats Grid */}
+   676→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+   677→        <StatCard icon="🎮" label="Games Played" value={stats?.gamesPlayed ?? 0} color="bg-gf-teal" />
+   678→        <StatCard icon="✅" label="Correct Answers" value={stats?.totalCorrect ?? 0} color="bg-gf-success" />
+   679→        <StatCard icon="🪙" label="Coins Earned" value={stats?.totalCoins ?? 0} color="bg-gf-warning" />
+   680→        <StatCard icon="🔥" label="Best Streak" value={stats?.bestStreak ?? 0} color="bg-gf-danger" />
+   681→      </div>
+   682→
+   683→      {/* Quick Actions + Recent */}
+   684→      <div className="grid lg:grid-cols-2 gap-6">
+   685→        {/* Quick Actions */}
+   686→        <div className="gf-card p-6">
+   687→          <h2 className="gf-font-display text-lg text-gf-dark mb-4">Quick Actions</h2>
+   688→          <div className="grid grid-cols-2 gap-3">
+   689→            {isTeacher ? (
+   690→              <>
+   691→                <ActionCard icon="📡" label="Host Live Game" desc="Real-time class quiz" onClick={() => setView('live')} />
+   692→                <ActionCard icon="📝" label="Assign Homework" desc="Async practice" onClick={() => setView('homework')} />
+   693→                <ActionCard icon="📚" label="Browse Sets" desc="Find question sets" onClick={() => setView('sets')} />
+   694→                <ActionCard icon="📊" label="View Results" desc="Student performance" onClick={() => setView('homework')} />
+   695→              </>
+   696→            ) : (
+   697→              <>
+   698→                <ActionCard icon="🎮" label="Play Games" desc="Choose a game mode" onClick={() => setView('mode-select')} />
+   699→                <ActionCard icon="📡" label="Join Game" desc="Enter a room code" onClick={() => setView('live')} />
+   700→                <ActionCard icon="🛒" label="Shop" desc="Spend your coins" onClick={() => setView('shop')} />
+   701→                <ActionCard icon="🏆" label="Achievements" desc="Track your goals" onClick={() => setView('achievements')} />
+   702→              </>
+   703→            )}
+   704→          </div>
+   705→        </div>
+   706→
+   707→        {/* Recent Games */}
+   708→        <div className="gf-card p-6">
+   709→          <h2 className="gf-font-display text-lg text-gf-dark mb-4">Recent Games</h2>
+   710→          {recentGames.length === 0 ? (
+   711→            <div className="text-center py-8 text-gf-dark/40">
+   712→              <p className="text-4xl mb-2">🏁</p>
+   713→              <p className="font-bold">No games yet!</p>
+   714→              <p className="text-sm">Play your first game to see stats here</p>
+   715→            </div>
+   716→          ) : (
+   717→            <div className="space-y-2 max-h-64 overflow-y-auto gf-scrollbar">
+   718→              {recentGames.map((game) => (
+   719→                <div key={game.id} className="flex items-center justify-between p-3 rounded-xl bg-gf-light/50 border border-gf-dark/10">
+   720→                  <div className="flex items-center gap-3">
+   721→                    <span className="text-xl">{game.gameType === 'solo' ? '🎮' : game.gameType === 'live' ? '📡' : '📝'}</span>
+   722→                    <div>
+   723→                      <p className="font-bold text-sm text-gf-dark capitalize">{game.gameType} Game</p>
+   724→                      <p className="text-xs text-gf-dark/50">{new Date(game.createdAt).toLocaleDateString()}</p>
+   725→                    </div>
+   726→                  </div>
+   727→                  <div className="text-right">
+   728→                    <p className="font-bold text-gf-dark">{game.score.toLocaleString()}</p>
+   729→                    <p className="text-xs text-gf-success">{game.correct}✓ {game.wrong}✗</p>
+   730→                  </div>
+   731→                </div>
+   732→              ))}
+   733→            </div>
+   734→          )}
+   735→        </div>
+   736→      </div>
+   737→
+   738→      {/* Active Homework */}
+   739→      {homeworks.length > 0 && (
+   740→        <div className="gf-card p-6">
+   741→          <h2 className="gf-font-display text-lg text-gf-dark mb-4">
+   742→            {isTeacher ? '📋 Assigned Homework' : '📋 Your Assignments'}
+   743→          </h2>
+   744→          <div className="grid lg:grid-cols-3 gap-3">
+   745→            {homeworks.slice(0, 3).map(hw => (
+   746→              <div key={hw.id} className="p-4 rounded-xl bg-gf-light/50 border border-gf-dark/10">
+   747→                <h3 className="font-bold text-gf-dark">{hw.title}</h3>
+   748→                <p className="text-sm text-gf-dark/50 mt-1">{hw.set?.title}</p>
+   749→                {hw.dueDate && (
+   750→                  <p className="text-xs text-gf-danger mt-2 font-bold">
+   751→                    Due: {new Date(hw.dueDate).toLocaleDateString()}
+   752→                  </p>
+   753→                )}
+   754→                <div className="flex items-center gap-2 mt-2">
+   755→                  <span className="gf-chip text-xs">{hw._count?.submissions || 0} submitted</span>
+   756→                </div>
+   757→              </div>
+   758→            ))}
+   759→          </div>
+   760→        </div>
+   761→      )}
+   762→    </div>
+   763→  )
+   764→}
+   765→
+   766→function StatCard({ icon, label, value, color }: { icon: string; label: string; value: number; color: string }) {
+   767→  return (
+   768→    <motion.div
+   769→      whileHover={{ y: -2 }}
+   770→      className={`gf-card gf-stat-card p-4 lg:p-5 ${color}/20 border-l-4 border-gf-dark`}
+   771→    >
+   772→      <div className="flex items-center gap-2 mb-2">
+   773→        <span className="text-2xl">{icon}</span>
+   774→      </div>
+   775→      <p className="gf-font-display text-2xl text-gf-dark">{value.toLocaleString()}</p>
+   776→      <p className="text-xs text-gf-dark/60 font-bold mt-1">{label}</p>
+   777→    </motion.div>
+   778→  )
+   779→}
+   780→
+   781→function ActionCard({ icon, label, desc, onClick }: { icon: string; label: string; desc: string; onClick: () => void }) {
+   782→  return (
+   783→    <motion.button
+   784→      whileHover={{ scale: 1.02 }}
+   785→      whileTap={{ scale: 0.98 }}
+   786→      onClick={onClick}
+   787→      className="p-4 rounded-xl bg-gf-light/50 border-2 border-gf-dark/10 hover:border-gf-teal/30 transition-all text-left"
+   788→    >
+   789→      <span className="text-2xl">{icon}</span>
+   790→      <p className="font-bold text-gf-dark text-sm mt-2">{label}</p>
+   791→      <p className="text-xs text-gf-dark/50">{desc}</p>
+   792→    </motion.button>
+   793→  )
+   794→}
+   795→
+   796→// ─── Solo Play View ───
+   797→function SoloView({ user, setView }: { user: User; setView: (v: View) => void }) {
+   798→  const [sets, setSets] = useState<QuestionSet[]>([])
+   799→  const [loading, setLoading] = useState(true)
+   800→  const [selectedSet, setSelectedSet] = useState<QuestionSet | null>(null)
+   801→  const [gameMode, setGameMode] = useState<GameModeId>('classic')
+   802→  const [playing, setPlaying] = useState(false)
+   803→
+   804→  useEffect(() => {
+   805→    api.get('/api/sets').then(data => {
+   806→      setSets(data)
+   807→      setLoading(false)
+   808→    }).catch(() => setLoading(false))
+   809→  }, [])
+   810→
+   811→  const startGame = () => {
+   812→    if (!selectedSet) return
+   813→    setPlaying(true)
+   814→  }
+   815→
+   816→  const gameModes = getAllGameModes()
+   817→
+   818→  if (playing && selectedSet) {
+   819→    return <GamePlayer
+   820→      questions={selectedSet.questions || []}
+   821→      mode={gameMode}
+   822→      playerName={user.name}
+   823→      userId={user.id}
+   824→      setId={selectedSet.id}
+   825→      onEnd={() => { setPlaying(false); setSelectedSet(null) }}
+   826→    />
+   827→  }
+   828→
+   829→  return (
+   830→    <div className="space-y-6">
+   831→      <div className="flex items-center justify-between">
+   832→        <div>
+   833→          <h1 className="gf-font-display text-2xl text-gf-dark">🎮 Solo Play</h1>
+   834→          <p className="text-gf-dark/60 font-bold">Practice at your own pace</p>
+   835→        </div>
+   836→        <button onClick={() => setView('home')} className="gf-btn gf-btn-outline text-sm">← Back</button>
+   837→      </div>
+   838→
+   839→      {!selectedSet ? (
+   840→        <>
+   841→          <div className="gf-card p-6">
+   842→            <h2 className="gf-font-display text-lg text-gf-dark mb-4">Choose a Question Set</h2>
+   843→            {loading ? (
+   844→              <div className="text-center py-8 text-gf-dark/40 font-bold">Loading...</div>
+   845→            ) : (
+   846→              <div className="grid lg:grid-cols-2 gap-3">
+   847→                {sets.map(set => (
+   848→                  <motion.button
+   849→                    key={set.id}
+   850→                    whileHover={{ scale: 1.01 }}
+   851→                    whileTap={{ scale: 0.99 }}
+   852→                    onClick={() => {
+   853→                      api.get(`/api/sets/${set.id}`).then(full => setSelectedSet(full))
+   854→                    }}
+   855→                    className="p-4 rounded-xl bg-gf-light/50 border-2 border-gf-dark/10 hover:border-gf-teal transition-all text-left"
+   856→                  >
+   857→                    <div className="flex items-center justify-between">
+   858→                      <h3 className="font-bold text-gf-dark">{set.title}</h3>
+   859→                      <span className="gf-chip text-xs">{set._count?.questions || 0} Q</span>
+   860→                    </div>
+   861→                    <p className="text-sm text-gf-dark/50 mt-1">{set.subject} • {set.gradeLevel}</p>
+   862→                    {set.description && <p className="text-xs text-gf-dark/40 mt-1">{set.description}</p>}
+   863→                  </motion.button>
+   864→                ))}
+   865→              </div>
+   866→            )}
+   867→          </div>
+   868→        </>
+   869→      ) : (
+   870→        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="gf-card p-6">
+   871→          <h2 className="gf-font-display text-lg text-gf-dark mb-2">{selectedSet.title}</h2>
+   872→          <p className="text-gf-dark/60 font-bold mb-4">{selectedSet.questions?.length} questions</p>
+   873→
+   874→          <div className="mb-6">
+   875→            <label className="text-gf-dark font-bold text-sm mb-3 block">Game Mode</label>
+   876→            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+   877→              {gameModes.map((m) => (
+   878→                <button
+   879→                  key={m.id}
+   880→                  onClick={() => setGameMode(m.id)}
+   881→                  className={`p-3 rounded-xl font-bold text-sm transition-all border-2 text-left ${
+   882→                    gameMode === m.id
+   883→                      ? 'bg-gf-teal border-gf-dark text-white'
+   884→                      : 'bg-white border-gf-dark/20 text-gf-dark'
+   885→                  }`}
+   886→                >
+   887→                  <span className="text-lg">{m.icon}</span>
+   888→                  <p className="mt-1 text-xs">{m.name}</p>
+   889→                </button>
+   890→              ))}
+   891→            </div>
+   892→          </div>
+   893→
+   894→          <div className="flex gap-3">
+   895→            <button onClick={() => setSelectedSet(null)} className="gf-btn gf-btn-outline text-sm">← Back</button>
+   896→            <button onClick={startGame} className="gf-btn text-sm">🏁 Start Game!</button>
+   897→          </div>
+   898→        </motion.div>
+   899→      )}
+   900→    </div>
+   901→  )
+   902→}
+   903→
+   904→// ─── Game Player (simplified for now — will port the full WebGL game) ───
+   905→function GamePlayer({ questions, mode, playerName, userId, setId, onEnd }: {
+   906→  questions: Question[]
+   907→  mode: GameModeId
+   908→  playerName: string
+   909→  userId: string
+   910→  setId: string
+   911→  onEnd: () => void
+   912→}) {
+   913→  const [currentQ, setCurrentQ] = useState(0)
+   914→  const [score, setScore] = useState(0)
+   915→  const [correct, setCorrect] = useState(0)
+   916→  const [wrong, setWrong] = useState(0)
+   917→  const [streak, setStreak] = useState(0)
+   918→  const [bestStreak, setBestStreak] = useState(0)
+   919→  const [hearts, setHearts] = useState(3)
+   920→  const [coins, setCoins] = useState(0)
+   921→  const [showResult, setShowResult] = useState(false)
+   922→  const [lastAnswer, setLastAnswer] = useState<'correct' | 'wrong' | null>(null)
+   923→  const [gameOver, setGameOver] = useState(false)
+   924→  const [timeLeft, setTimeLeft] = useState(15)
+   925→  const [answered, setAnswered] = useState(false)
+   926→
+   927→  // Timer
+   928→  useEffect(() => {
+   929→    if (gameOver || answered) return
+   930→    const timer = setInterval(() => {
+   931→      setTimeLeft(prev => {
+   932→        if (prev <= 1) {
+   933→          handleAnswer(-1) // timeout
+   934→          return 0
+   935→        }
+   936→        return prev - 1
+   937→      })
+   938→    }, 1000)
+   939→    return () => clearInterval(timer)
+   940→  }, [currentQ, gameOver, answered])
+   941→
+   942→  const handleAnswer = (idx: number) => {
+   943→    if (answered) return
+   944→    setAnswered(true)
+   945→
+   946→    const q = questions[currentQ]
+   947→    const isCorrect = idx === q.correctIdx
+   948→
+   949→    if (isCorrect) {
+   950→      const newStreak = streak + 1
+   951→      const points = 50 + newStreak * 25
+   952→      setScore(s => s + points)
+   953→      setCorrect(c => c + 1)
+   954→      setStreak(newStreak)
+   955→      setBestStreak(bs => Math.max(bs, newStreak))
+   956→      setCoins(c => c + 5)
+   957→      setLastAnswer('correct')
+   958→    } else {
+   959→      setWrong(w => w + 1)
+   960→      setStreak(0)
+   961→      if (mode === 'battle-royale' || mode === 'classic') {
+   962→        setHearts(h => {
+   963→          const newH = h - 1
+   964→          if (newH <= 0) setGameOver(true)
+   965→          return newH
+   966→        })
+   967→      }
+   968→      setLastAnswer('wrong')
+   969→    }
+   970→
+   971→    setShowResult(true)
+   972→    setTimeout(() => {
+   973→      setShowResult(false)
+   974→      setLastAnswer(null)
+   975→      setAnswered(false)
+   976→      setTimeLeft(15)
+   977→      if (currentQ + 1 >= questions.length) {
+   978→        setGameOver(true)
+   979→      } else {
+   980→        setCurrentQ(q => q + 1)
+   981→      }
+   982→    }, 1500)
+   983→  }
+   984→
+   985→  // Save result on game over
+   986→  useEffect(() => {
+   987→    if (gameOver) {
+   988→      api.post('/api/game-results', {
+   989→        userId,
+   990→        gameType: 'solo',
+   991→        setId,
+   992→        score,
+   993→        correct,
+   994→        wrong,
+   995→        bestStreak,
+   996→        coinsEarned: coins,
+   997→      }).catch(() => {})
+   998→    }
+   999→  }, [gameOver])
+  1000→
+  1001→  const modeConfig = getGameMode(mode)
+  1002→
+  1003→  if (gameOver) {
+  1004→    return (
+  1005→      <div className="gf-card p-8 text-center max-w-lg mx-auto">
+  1006→        <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} className="text-6xl mb-4">🏁</motion.div>
+  1007→        <h2 className="gf-font-display text-2xl text-gf-dark mb-4">Game Over!</h2>
+  1008→        <div className="grid grid-cols-2 gap-4 mb-6">
+  1009→          <div className="p-3 rounded-xl bg-gf-light/50">
+  1010→            <p className="gf-font-display text-2xl text-gf-dark">{score.toLocaleString()}</p>
+  1011→            <p className="text-xs text-gf-dark/60 font-bold">Score</p>
+  1012→          </div>
+  1013→          <div className="p-3 rounded-xl bg-gf-success/20">
+  1014→            <p className="gf-font-display text-2xl text-gf-dark">{correct}/{correct + wrong}</p>
+  1015→            <p className="text-xs text-gf-dark/60 font-bold">Correct</p>
+  1016→          </div>
+  1017→          <div className="p-3 rounded-xl bg-gf-warning/20">
+  1018→            <p className="gf-font-display text-2xl text-gf-dark">{bestStreak}</p>
+  1019→            <p className="text-xs text-gf-dark/60 font-bold">Best Streak</p>
+  1020→          </div>
+  1021→          <div className="p-3 rounded-xl bg-gf-purple/20">
+  1022→            <p className="gf-font-display text-2xl text-gf-dark">🪙 {coins}</p>
+  1023→            <p className="text-xs text-gf-dark/60 font-bold">Coins Earned</p>
+  1024→          </div>
+  1025→        </div>
+  1026→        <div className="flex gap-3 justify-center">
+  1027→          <button onClick={onEnd} className="gf-btn text-sm">🏠 Dashboard</button>
+  1028→          <button onClick={() => {
+  1029→            setCurrentQ(0); setScore(0); setCorrect(0); setWrong(0); setStreak(0); setBestStreak(0); setHearts(3); setCoins(0); setGameOver(false); setAnswered(false); setTimeLeft(15)
+  1030→          }} className="gf-btn gf-btn-green text-sm">🔄 Play Again</button>
+  1031→        </div>
+  1032→      </div>
+  1033→    )
+  1034→  }
+  1035→
+  1036→  const q = questions[currentQ]
+  1037→  let choices: string[] = []
+  1038→  try { choices = JSON.parse(q.choices) } catch { choices = ['A', 'B', 'C', 'D'] }
+  1039→
+  1040→  const answerColors = ['bg-gf-danger', 'bg-gf-teal', 'bg-gf-success', 'bg-gf-warning']
+  1041→
+  1042→  return (
+  1043→    <div className="max-w-2xl mx-auto space-y-4">
+  1044→      {/* HUD */}
+  1045→      <div className="gf-card p-4 flex items-center justify-between">
+  1046→        <div className="flex items-center gap-4">
+  1047→          <span className="gf-font-display text-gf-dark">Q{currentQ + 1}/{questions.length}</span>
+  1048→          <span className="gf-chip">🪙 {coins}</span>
+  1049→          {modeConfig && <span className="gf-chip">{modeConfig.icon} {modeConfig.name}</span>}
+  1050→        </div>
+  1051→        <div className="flex items-center gap-4">
+  1052→          <span className="gf-font-display text-gf-dark">{score.toLocaleString()}</span>
+  1053→          {hearts >= 0 && (mode === 'classic' || mode === 'battle-royale') && (
+  1054→            <span className="text-lg">{Array(Math.max(0, hearts)).fill('❤️').join('')}</span>
+  1055→          )}
+  1056→          {streak > 1 && <span className="gf-chip">🔥 {streak}</span>}
+  1057→        </div>
+  1058→      </div>
+  1059→
+  1060→      {/* Timer */}
+  1061→      <div className="h-2 bg-gf-dark/10 rounded-full overflow-hidden">
+  1062→        <motion.div
+  1063→          animate={{ width: `${(timeLeft / 15) * 100}%` }}
+  1064→          transition={{ duration: 0.5 }}
+  1065→          className={`h-full rounded-full ${timeLeft > 5 ? 'bg-gf-success' : 'bg-gf-danger'}`}
+  1066→        />
+  1067→      </div>
+  1068→
+  1069→      {/* Question */}
+  1070→      <AnimatePresence mode="wait">
+  1071→        <motion.div
+  1072→          key={currentQ}
+  1073→          initial={{ opacity: 0, x: 50 }}
+  1074→          animate={{ opacity: 1, x: 0 }}
+  1075→          exit={{ opacity: 0, x: -50 }}
+  1076→          className="gf-card p-6"
+  1077→        >
+  1078→          <h2 className="gf-font-display text-xl text-gf-dark mb-6">{q.text}</h2>
+  1079→
+  1080→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  1081→            {choices.map((choice, idx) => (
+  1082→              <motion.button
+  1083→                key={idx}
+  1084→                whileHover={!answered ? { scale: 1.02 } : {}}
+  1085→                whileTap={!answered ? { scale: 0.98 } : {}}
+  1086→                onClick={() => handleAnswer(idx)}
+  1087→                disabled={answered}
+  1088→                className={`p-4 rounded-xl border-3 font-bold text-white transition-all text-left ${
+  1089→                  answered && idx === q.correctIdx
+  1090→                    ? 'bg-gf-success border-gf-dark ring-4 ring-gf-success/30'
+  1091→                    : answered && lastAnswer === 'wrong' && idx !== q.correctIdx
+  1092→                    ? 'bg-gf-danger/50 border-gf-dark opacity-50'
+  1093→                    : answerColors[idx] + ' border-gf-dark hover:shadow-lg'
+  1094→                }`}
+  1095→              >
+  1096→                <span className="text-sm opacity-80 block">{String.fromCharCode(65 + idx)}</span>
+  1097→                <span className="text-base">{choice}</span>
+  1098→              </motion.button>
+  1099→            ))}
+  1100→          </div>
+  1101→
+  1102→          {/* Result feedback */}
+  1103→          <AnimatePresence>
+  1104→            {showResult && (
+  1105→              <motion.div
+  1106→                initial={{ opacity: 0, y: 10 }}
+  1107→                animate={{ opacity: 1, y: 0 }}
+  1108→                exit={{ opacity: 0 }}
+  1109→                className={`mt-4 p-3 rounded-xl text-center font-bold ${
+  1110→                  lastAnswer === 'correct' ? 'bg-gf-success/20 text-gf-success' : 'bg-gf-danger/20 text-gf-danger'
+  1111→                }`}
+  1112→              >
+  1113→                {lastAnswer === 'correct' ? '✅ Correct!' : `❌ ${q.explanation || 'The correct answer was ' + choices[q.correctIdx]}`}
+  1114→              </motion.div>
+  1115→            )}
+  1116→          </AnimatePresence>
+  1117→        </motion.div>
+  1118→      </AnimatePresence>
+  1119→    </div>
+  1120→  )
+  1121→}
+  1122→
+  1123→// ─── Live Game View ───
+  1124→function LiveView({ user }: { user: User }) {
+  1125→  const [sets, setSets] = useState<QuestionSet[]>([])
+  1126→  const [selectedSetId, setSelectedSetId] = useState('')
+  1127→  const [roomCode, setRoomCode] = useState('')
+  1128→  const [joinCode, setJoinCode] = useState('')
+  1129→  const [mode, setMode] = useState('classic')
+  1130→  const [room, setRoom] = useState<any>(null)
+  1131→  const [loading, setLoading] = useState(false)
+  1132→  const [error, setError] = useState('')
+  1133→
+  1134→  useEffect(() => {
+  1135→    api.get('/api/sets').then(setSets).catch(() => {})
+  1136→  }, [])
+  1137→
+  1138→  const hostGame = async () => {
+  1139→    if (!selectedSetId) return
+  1140→    setLoading(true)
+  1141→    setError('')
+  1142→    try {
+  1143→      const result = await api.post('/api/rooms', {
+  1144→        setId: selectedSetId,
+  1145→        hostId: user.id,
+  1146→        mode,
+  1147→      })
+  1148→      setRoom(result)
+  1149→      setRoomCode(result.code)
+  1150→    } catch (err: any) {
+  1151→      setError(err.message)
+  1152→    } finally {
+  1153→      setLoading(false)
+  1154→    }
+  1155→  }
+  1156→
+  1157→  const joinGame = async () => {
+  1158→    if (!joinCode) return
+  1159→    setLoading(true)
+  1160→    setError('')
+  1161→    try {
+  1162→      const result = await api.post(`/api/rooms/${joinCode}`, {
+  1163→        name: user.name,
+  1164→        userId: user.id,
+  1165→      })
+  1166→      setRoom(result.room)
+  1167→    } catch (err: any) {
+  1168→      setError(err.message)
+  1169→    } finally {
+  1170→      setLoading(false)
+  1171→    }
+  1172→  }
+  1173→
+  1174→  return (
+  1175→    <div className="space-y-6">
+  1176→      <h1 className="gf-font-display text-2xl text-gf-dark">📡 Live Game</h1>
+  1177→
+  1178→      {!room ? (
+  1179→        <div className="grid lg:grid-cols-2 gap-6">
+  1180→          {/* Host a Game */}
+  1181→          <div className="gf-card p-6">
+  1182→            <h2 className="gf-font-display text-lg text-gf-dark mb-4">Host a Game</h2>
+  1183→            <div className="space-y-4">
+  1184→              <div>
+  1185→                <label className="text-gf-dark font-bold text-sm mb-1 block">Question Set</label>
+  1186→                <select
+  1187→                  value={selectedSetId}
+  1188→                  onChange={e => setSelectedSetId(e.target.value)}
+  1189→                  className="gf-input"
+  1190→                >
+  1191→                  <option value="">Select a set...</option>
+  1192→                  {sets.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+  1193→                </select>
+  1194→              </div>
+  1195→              <div>
+  1196→                <label className="text-gf-dark font-bold text-sm mb-1 block">Game Mode</label>
+  1197→                <div className="flex gap-2 flex-wrap">
+  1198→                  {[{id: 'classic', icon: '📝'}, {id: 'racing', icon: '🏎️'}, {id: 'battle-royale', icon: '⚔️'}, {id: 'gold-rush', icon: '💰'}].map(m => (
+  1199→                    <button
+  1200→                      key={m.id}
+  1201→                      onClick={() => setMode(m.id)}
+  1202→                      className={`flex-1 py-2 rounded-xl font-bold text-xs capitalize transition-all border-2 ${
+  1203→                        mode === m.id ? 'bg-gf-teal text-white border-gf-dark' : 'bg-white text-gf-dark border-gf-dark/20'
+  1204→                      }`}
+  1205→                    >
+  1206→                      {m.icon} {m.id}
+  1207→                    </button>
+  1208→                  ))}
+  1209→                </div>
+  1210→              </div>
+  1211→              <button onClick={hostGame} disabled={loading || !selectedSetId} className="gf-btn w-full text-sm">
+  1212→                {loading ? '⏳' : '🚀 Host Game'}
+  1213→              </button>
+  1214→            </div>
+  1215→          </div>
+  1216→
+  1217→          {/* Join a Game */}
+  1218→          <div className="gf-card p-6">
+  1219→            <h2 className="gf-font-display text-lg text-gf-dark mb-4">Join a Game</h2>
+  1220→            <div className="space-y-4">
+  1221→              <div>
+  1222→                <label className="text-gf-dark font-bold text-sm mb-1 block">Room Code</label>
+  1223→                <input
+  1224→                  type="text"
+  1225→                  value={joinCode}
+  1226→                  onChange={e => setJoinCode(e.target.value.toUpperCase())}
+  1227→                  className="gf-input text-center text-2xl tracking-[0.3em]"
+  1228→                  placeholder="ABC123"
+  1229→                  maxLength={6}
+  1230→                />
+  1231→              </div>
+  1232→              <button onClick={joinGame} disabled={loading || joinCode.length < 6} className="gf-btn gf-btn-green w-full text-sm">
+  1233→                {loading ? '⏳' : '🎮 Join Game'}
+  1234→              </button>
+  1235→            </div>
+  1236→          </div>
+  1237→        </div>
+  1238→      ) : (
+  1239→        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="gf-card p-8 text-center max-w-lg mx-auto">
+  1240→          <div className="text-6xl mb-4">📡</div>
+  1241→          <h2 className="gf-font-display text-2xl text-gf-dark mb-2">Room Created!</h2>
+  1242→          <div className="bg-gf-dark text-white p-4 rounded-2xl inline-block mb-4">
+  1243→            <p className="text-xs text-gf-teal font-bold mb-1">ROOM CODE</p>
+  1244→            <p className="gf-font-display text-4xl tracking-[0.2em]">{room.code}</p>
+  1245→          </div>
+  1246→          <p className="text-gf-dark/60 font-bold mb-4">Share this code with your students to join!</p>
+  1247→          <div className="flex gap-3 justify-center">
+  1248→            <button onClick={() => setRoom(null)} className="gf-btn gf-btn-outline text-sm">← Back</button>
+  1249→            <button className="gf-btn text-sm">🏁 Start Game</button>
+  1250→          </div>
+  1251→        </motion.div>
+  1252→      )}
+  1253→
+  1254→      {error && <div className="bg-gf-danger/10 text-gf-danger p-3 rounded-xl font-bold text-sm">{error}</div>}
+  1255→    </div>
+  1256→  )
+  1257→}
+  1258→
+  1259→// ─── Question Sets View ───
+  1260→function SetsView({ user, setView }: { user: User; setView: (v: View) => void }) {
+  1261→  const [sets, setSets] = useState<QuestionSet[]>([])
+  1262→  const [loading, setLoading] = useState(true)
+  1263→
+  1264→  useEffect(() => {
+  1265→    api.get('/api/sets').then(data => { setSets(data); setLoading(false) }).catch(() => setLoading(false))
+  1266→  }, [])
+  1267→
+  1268→  const deleteSet = async (id: string) => {
+  1269→    if (!confirm('Delete this set?')) return
+  1270→    try {
+  1271→      await api.del(`/api/sets/${id}`)
+  1272→      setSets(s => s.filter(set => set.id !== id))
+  1273→    } catch {}
+  1274→  }
+  1275→
+  1276→  const subjectColors: Record<string, string> = {
+  1277→    Math: 'bg-gf-danger/10 border-gf-danger/30',
+  1278→    Science: 'bg-gf-success/10 border-gf-success/30',
+  1279→    History: 'bg-gf-warning/10 border-gf-warning/30',
+  1280→    English: 'bg-gf-purple/10 border-gf-purple/30',
+  1281→    Geography: 'bg-gf-teal/10 border-gf-teal/30',
+  1282→  }
+  1283→
+  1284→  return (
+  1285→    <div className="space-y-6">
+  1286→      <div className="flex items-center justify-between">
+  1287→        <div>
+  1288→          <h1 className="gf-font-display text-2xl text-gf-dark">📚 Question Sets</h1>
+  1289→          <p className="text-gf-dark/60 font-bold">{sets.length} sets available</p>
+  1290→        </div>
+  1291→        {user.role === 'teacher' && (
+  1292→          <button onClick={() => setView('create-set')} className="gf-btn text-sm">✨ Create New Set</button>
+  1293→        )}
+  1294→      </div>
+  1295→
+  1296→      {loading ? (
+  1297→        <div className="text-center py-12 text-gf-dark/40 font-bold">Loading...</div>
+  1298→      ) : (
+  1299→        <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-4">
+  1300→          {sets.map(set => (
+  1301→            <motion.div
+  1302→              key={set.id}
+  1303→              whileHover={{ y: -2 }}
+  1304→              className={`gf-card p-5 ${subjectColors[set.subject || ''] || 'border-gf-dark/10'}`}
+  1305→            >
+  1306→              <div className="flex items-start justify-between mb-2">
+  1307→                <h3 className="font-bold text-gf-dark text-lg">{set.title}</h3>
+  1308→                {set.creatorId === user.id && (
+  1309→                  <button onClick={() => deleteSet(set.id)} className="text-gf-danger/50 hover:text-gf-danger text-sm">🗑️</button>
+  1310→                )}
+  1311→              </div>
+  1312→              <div className="flex gap-2 mb-2">
+  1313→                {set.subject && <span className="gf-chip text-xs">{set.subject}</span>}
+  1314→                {set.gradeLevel && <span className="gf-chip text-xs">{set.gradeLevel}</span>}
+  1315→                <span className="gf-chip text-xs">{set._count?.questions || 0} Q</span>
+  1316→              </div>
+  1317→              {set.description && <p className="text-sm text-gf-dark/50 mb-3">{set.description}</p>}
+  1318→              <div className="flex items-center justify-between">
+  1319→                <span className="text-xs text-gf-dark/40">by {set.creator?.name || 'Unknown'}</span>
+  1320→                {set.isPublic && <span className="gf-chip text-xs bg-gf-success/10">🌐 Public</span>}
+  1321→              </div>
+  1322→            </motion.div>
+  1323→          ))}
+  1324→        </div>
+  1325→      )}
+  1326→    </div>
+  1327→  )
+  1328→}
+  1329→
+  1330→// ─── Create Set View ───
+  1331→function CreateSetView({ user, setView }: { user: User; setView: (v: View) => void }) {
+  1332→  const [title, setTitle] = useState('')
+  1333→  const [subject, setSubject] = useState('')
+  1334→  const [gradeLevel, setGradeLevel] = useState('')
+  1335→  const [description, setDescription] = useState('')
+  1336→  const [isPublic, setIsPublic] = useState(true)
+  1337→  const [questions, setQuestions] = useState<{ text: string; choices: string[]; correctIdx: number; explanation: string }[]>([
+  1338→    { text: '', choices: ['', '', '', ''], correctIdx: 0, explanation: '' },
+  1339→  ])
+  1340→  const [saving, setSaving] = useState(false)
+  1341→  const [error, setError] = useState('')
+  1342→
+  1343→  const addQuestion = () => {
+  1344→    setQuestions([...questions, { text: '', choices: ['', '', '', ''], correctIdx: 0, explanation: '' }])
+  1345→  }
+  1346→
+  1347→  const updateQuestion = (idx: number, field: string, value: any) => {
+  1348→    const updated = [...questions]
+  1349→    if (field === 'choices') {
+  1350→      updated[idx].choices = value
+  1351→    } else {
+  1352→      (updated[idx] as any)[field] = value
+  1353→    }
+  1354→    setQuestions(updated)
+  1355→  }
+  1356→
+  1357→  const removeQuestion = (idx: number) => {
+  1358→    if (questions.length <= 1) return
+  1359→    setQuestions(questions.filter((_, i) => i !== idx))
+  1360→  }
+  1361→
+  1362→  const save = async () => {
+  1363→    if (!title || questions.some(q => !q.text || q.choices.some(c => !c))) {
+  1364→      setError('Please fill in all fields')
+  1365→      return
+  1366→    }
+  1367→    setSaving(true)
+  1368→    setError('')
+  1369→    try {
+  1370→      await api.post('/api/sets', {
+  1371→        title,
+  1372→        subject,
+  1373→        gradeLevel,
+  1374→        description,
+  1375→        isPublic,
+  1376→        creatorId: user.id,
+  1377→        questions: questions.map(q => ({
+  1378→          text: q.text,
+  1379→          choices: q.choices,
+  1380→          correctIdx: q.correctIdx,
+  1381→          explanation: q.explanation,
+  1382→        })),
+  1383→      })
+  1384→      setView('sets')
+  1385→    } catch (err: any) {
+  1386→      setError(err.message)
+  1387→    } finally {
+  1388→      setSaving(false)
+  1389→    }
+  1390→  }
+  1391→
+  1392→  return (
+  1393→    <div className="space-y-6">
+  1394→      <div className="flex items-center justify-between">
+  1395→        <h1 className="gf-font-display text-2xl text-gf-dark">✨ Create Question Set</h1>
+  1396→        <button onClick={() => setView('sets')} className="gf-btn gf-btn-outline text-sm">← Back</button>
+  1397→      </div>
+  1398→
+  1399→      <div className="gf-card p-6 space-y-4">
+  1400→        <div className="grid lg:grid-cols-2 gap-4">
+  1401→          <div>
+  1402→            <label className="text-gf-dark font-bold text-sm mb-1 block">Title</label>
+  1403→            <input value={title} onChange={e => setTitle(e.target.value)} className="gf-input" placeholder="e.g. Chapter 5 Quiz" />
+  1404→          </div>
+  1405→          <div className="grid grid-cols-2 gap-4">
+  1406→            <div>
+  1407→              <label className="text-gf-dark font-bold text-sm mb-1 block">Subject</label>
+  1408→              <select value={subject} onChange={e => setSubject(e.target.value)} className="gf-input">
+  1409→                <option value="">Select...</option>
+  1410→                <option>Math</option><option>Science</option><option>History</option>
+  1411→                <option>English</option><option>Geography</option><option>Other</option>
+  1412→              </select>
+  1413→            </div>
+  1414→            <div>
+  1415→              <label className="text-gf-dark font-bold text-sm mb-1 block">Grade</label>
+  1416→              <select value={gradeLevel} onChange={e => setGradeLevel(e.target.value)} className="gf-input">
+  1417→                <option value="">Select...</option>
+  1418→                <option>6th</option><option>7th</option><option>8th</option>
+  1419→                <option>9th</option><option>10th</option><option>11th</option><option>12th</option>
+  1420→              </select>
+  1421→            </div>
+  1422→          </div>
+  1423→        </div>
+  1424→        <div>
+  1425→          <label className="text-gf-dark font-bold text-sm mb-1 block">Description</label>
+  1426→          <input value={description} onChange={e => setDescription(e.target.value)} className="gf-input" placeholder="Brief description..." />
+  1427→        </div>
+  1428→        <label className="flex items-center gap-2 text-gf-dark font-bold text-sm">
+  1429→          <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} className="w-4 h-4" />
+  1430→          Make this set public (other teachers can use it)
+  1431→        </label>
+  1432→      </div>
+  1433→
+  1434→      {/* Questions */}
+  1435→      <div className="space-y-4">
+  1436→        <div className="flex items-center justify-between">
+  1437→          <h2 className="gf-font-display text-lg text-gf-dark">Questions ({questions.length})</h2>
+  1438→          <button onClick={addQuestion} className="gf-btn text-sm">+ Add Question</button>
+  1439→        </div>
+  1440→
+  1441→        {questions.map((q, idx) => (
+  1442→          <motion.div
+  1443→            key={idx}
+  1444→            initial={{ opacity: 0, y: 10 }}
+  1445→            animate={{ opacity: 1, y: 0 }}
+  1446→            className="gf-card p-5"
+  1447→          >
+  1448→            <div className="flex items-center justify-between mb-3">
+  1449→              <span className="gf-font-display text-gf-dark">Q{idx + 1}</span>
+  1450→              <button onClick={() => removeQuestion(idx)} className="text-gf-danger/50 hover:text-gf-danger text-sm">Remove</button>
+  1451→            </div>
+  1452→            <input
+  1453→              value={q.text}
+  1454→              onChange={e => updateQuestion(idx, 'text', e.target.value)}
+  1455→              className="gf-input mb-3"
+  1456→              placeholder="Enter your question..."
+  1457→            />
+  1458→            <div className="grid grid-cols-2 gap-2 mb-3">
+  1459→              {q.choices.map((choice, cIdx) => (
+  1460→                <div key={cIdx} className="flex items-center gap-2">
+  1461→                  <button
+  1462→                    onClick={() => updateQuestion(idx, 'correctIdx', cIdx)}
+  1463→                    className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold shrink-0 ${
+  1464→                      q.correctIdx === cIdx ? 'bg-gf-success border-gf-dark text-white' : 'bg-white border-gf-dark/20 text-gf-dark'
+  1465→                    }`}
+  1466→                  >
+  1467→                    {String.fromCharCode(65 + cIdx)}
+  1468→                  </button>
+  1469→                  <input
+  1470→                    value={choice}
+  1471→                    onChange={e => {
+  1472→                      const newChoices = [...q.choices]
+  1473→                      newChoices[cIdx] = e.target.value
+  1474→                      updateQuestion(idx, 'choices', newChoices)
+  1475→                    }}
+  1476→                    className="gf-input text-sm"
+  1477→                    placeholder={`Choice ${String.fromCharCode(65 + cIdx)}`}
+  1478→                  />
+  1479→                </div>
+  1480→              ))}
+  1481→            </div>
+  1482→            <input
+  1483→              value={q.explanation}
+  1484→              onChange={e => updateQuestion(idx, 'explanation', e.target.value)}
+  1485→              className="gf-input text-sm"
+  1486→              placeholder="Explanation (optional)..."
+  1487→            />
+  1488→          </motion.div>
+  1489→        ))}
+  1490→      </div>
+  1491→
+  1492→      {error && <div className="bg-gf-danger/10 text-gf-danger p-3 rounded-xl font-bold text-sm">{error}</div>}
+  1493→
+  1494→      <div className="flex gap-3 justify-end">
+  1495→        <button onClick={() => setView('sets')} className="gf-btn gf-btn-outline text-sm">Cancel</button>
+  1496→        <button onClick={save} disabled={saving} className="gf-btn text-sm">
+  1497→          {saving ? '⏳ Saving...' : '💾 Save Set'}
+  1498→        </button>
+  1499→      </div>
+  1500→    </div>
+  1501→  )
+  1502→}
+  1503→
+  1504→// ─── Homework View ───
+  1505→function HomeworkView({ user }: { user: User }) {
+  1506→  const [homeworks, setHomeworks] = useState<Homework[]>([])
+  1507→  const [loading, setLoading] = useState(true)
+  1508→
+  1509→  useEffect(() => {
+  1510→    api.get('/api/homework').then(data => { setHomeworks(data); setLoading(false) }).catch(() => setLoading(false))
+  1511→  }, [])
+  1512→
+  1513→  return (
+  1514→    <div className="space-y-6">
+  1515→      <h1 className="gf-font-display text-2xl text-gf-dark">📝 Homework</h1>
+  1516→      {loading ? (
+  1517→        <div className="text-center py-12 text-gf-dark/40 font-bold">Loading...</div>
+  1518→      ) : homeworks.length === 0 ? (
+  1519→        <div className="gf-card p-8 text-center">
+  1520→          <p className="text-4xl mb-2">📋</p>
+  1521→          <p className="font-bold text-gf-dark">No homework yet</p>
+  1522→          <p className="text-sm text-gf-dark/50">{user.role === 'teacher' ? 'Assign your first homework!' : 'Your teacher hasn\'t assigned any homework yet'}</p>
+  1523→        </div>
+  1524→      ) : (
+  1525→        <div className="grid lg:grid-cols-2 gap-4">
+  1526→          {homeworks.map(hw => (
+  1527→            <div key={hw.id} className="gf-card p-5">
+  1528→              <h3 className="font-bold text-gf-dark text-lg">{hw.title}</h3>
+  1529→              <p className="text-sm text-gf-dark/50 mt-1">{hw.set?.title}</p>
+  1530→              {hw.dueDate && (
+  1531→                <p className="text-xs text-gf-danger mt-2 font-bold">📅 Due: {new Date(hw.dueDate).toLocaleDateString()}</p>
+  1532→              )}
+  1533→              <div className="flex gap-2 mt-3">
+  1534→                <span className="gf-chip text-xs">{hw.mode}</span>
+  1535→                <span className="gf-chip text-xs">{hw._count?.submissions || 0} submitted</span>
+  1536→              </div>
+  1537→              {user.role === 'student' && (
+  1538→                <button className="gf-btn text-sm mt-3 w-full">🚀 Start Homework</button>
+  1539→              )}
+  1540→            </div>
+  1541→          ))}
+  1542→        </div>
+  1543→      )}
+  1544→    </div>
+  1545→  )
+  1546→}
+  1547→
+  1548→// ─── Shop View ───
+  1549→function ShopView({ user }: { user: User }) {
+  1550→  const [items, setItems] = useState<ShopItem[]>([])
+  1551→  const [loading, setLoading] = useState(true)
+  1552→  const [category, setCategory] = useState('all')
+  1553→  const [purchasing, setPurchasing] = useState<string | null>(null)
+  1554→
+  1555→  useEffect(() => {
+  1556→    api.get('/api/shop').then(data => { setItems(data); setLoading(false) }).catch(() => setLoading(false))
+  1557→  }, [])
+  1558→
+  1559→  const purchase = async (item: ShopItem) => {
+  1560→    setPurchasing(item.id)
+  1561→    try {
+  1562→      await api.post(`/api/shop/${item.id}`, { userId: user.id })
+  1563→      // Refresh user coins
+  1564→      setItems(items.map(i => i.id === item.id ? { ...i, _purchased: true } as any : i))
+  1565→    } catch (err: any) {
+  1566→      alert(err.message)
+  1567→    } finally {
+  1568→      setPurchasing(null)
+  1569→    }
+  1570→  }
+  1571→
+  1572→  const categories = ['all', 'car_skin', 'power_up', 'trail', 'badge']
+  1573→  const filtered = category === 'all' ? items : items.filter(i => i.category === category)
+  1574→
+  1575→  const rarityColors: Record<string, string> = {
+  1576→    common: 'border-gray-300 bg-gray-50',
+  1577→    rare: 'border-blue-400 bg-blue-50',
+  1578→    epic: 'border-purple-400 bg-purple-50',
+  1579→    legendary: 'border-amber-400 bg-amber-50',
+  1580→  }
+  1581→
+  1582→  return (
+  1583→    <div className="space-y-6">
+  1584→      <div className="flex items-center justify-between">
+  1585→        <div>
+  1586→          <h1 className="gf-font-display text-2xl text-gf-dark">🛒 Shop</h1>
+  1587→          <p className="text-gf-dark/60 font-bold">Spend your coins on cool stuff!</p>
+  1588→        </div>
+  1589→        <div className="gf-chip text-lg">🪙 {user.coins.toLocaleString()}</div>
+  1590→      </div>
+  1591→
+  1592→      {/* Category tabs */}
+  1593→      <div className="flex gap-2 overflow-x-auto pb-2">
+  1594→        {categories.map(cat => (
+  1595→          <button
+  1596→            key={cat}
+  1597→            onClick={() => setCategory(cat)}
+  1598→            className={`px-4 py-2 rounded-xl font-bold text-sm capitalize whitespace-nowrap transition-all ${
+  1599→              category === cat ? 'bg-gf-dark text-white' : 'bg-white text-gf-dark border-2 border-gf-dark/10'
+  1600→            }`}
+  1601→          >
+  1602→            {cat === 'all' ? '🌟 All' : cat === 'car_skin' ? '🏎️ Car Skins' : cat === 'power_up' ? '⚡ Power-Ups' : cat === 'trail' ? '✨ Trails' : '🏅 Badges'}
+  1603→          </button>
+  1604→        ))}
+  1605→      </div>
+  1606→
+  1607→      {loading ? (
+  1608→        <div className="text-center py-12 text-gf-dark/40 font-bold">Loading shop...</div>
+  1609→      ) : (
+  1610→        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+  1611→          {filtered.map(item => (
+  1612→            <motion.div
+  1613→              key={item.id}
+  1614→              whileHover={{ y: -4 }}
+  1615→              className={`gf-card p-4 border-2 ${rarityColors[item.rarity]}`}
+  1616→            >
+  1617→              <div className="text-center mb-3">
+  1618→                <span className="text-4xl">{item.icon}</span>
+  1619→              </div>
+  1620→              <h3 className="font-bold text-gf-dark text-sm text-center">{item.name}</h3>
+  1621→              <p className="text-xs text-gf-dark/50 text-center mt-1">{item.description}</p>
+  1622→              <div className="flex items-center justify-center gap-2 mt-2">
+  1623→                <span className={`text-xs font-bold capitalize px-2 py-0.5 rounded-full ${
+  1624→                  item.rarity === 'legendary' ? 'bg-amber-100 text-amber-700' :
+  1625→                  item.rarity === 'epic' ? 'bg-purple-100 text-purple-700' :
+  1626→                  item.rarity === 'rare' ? 'bg-blue-100 text-blue-700' :
+  1627→                  'bg-gray-100 text-gray-700'
+  1628→                }`}>{item.rarity}</span>
+  1629→              </div>
+  1630→              <button
+  1631→                onClick={() => purchase(item)}
+  1632→                disabled={purchasing === item.id || user.coins < item.price}
+  1633→                className="gf-btn text-xs w-full mt-3 py-2"
+  1634→              >
+  1635→                {purchasing === item.id ? '⏳' : `🪙 ${item.price}`}
+  1636→              </button>
+  1637→            </motion.div>
+  1638→          ))}
+  1639→        </div>
+  1640→      )}
+  1641→    </div>
+  1642→  )
+  1643→}
+  1644→
+  1645→// ─── Achievements View ───
+  1646→function AchievementsView({ user }: { user: User }) {
+  1647→  const [achievements, setAchievements] = useState<Achievement[]>([])
+  1648→  const [userAchievements, setUserAchievements] = useState<UserAchievement[]>([])
+  1649→  const [loading, setLoading] = useState(true)
+  1650→
+  1651→  useEffect(() => {
+  1652→    Promise.all([
+  1653→      api.get('/api/achievements'),
+  1654→      api.get(`/api/achievements/${user.id}`),
+  1655→    ]).then(([ach, uach]) => {
+  1656→      setAchievements(ach)
+  1657→      setUserAchievements(uach)
+  1658→      setLoading(false)
+  1659→    }).catch(() => setLoading(false))
+  1660→  }, [user.id])
+  1661→
+  1662→  const unlockedIds = new Set(userAchievements.map(ua => ua.achievementId))
+  1663→
+  1664→  const categories = ['gameplay', 'streak', 'collection', 'social']
+  1665→  const catIcons: Record<string, string> = { gameplay: '🎮', streak: '🔥', collection: '💎', social: '👥' }
+  1666→
+  1667→  return (
+  1668→    <div className="space-y-6">
+  1669→      <div className="flex items-center justify-between">
+  1670→        <div>
+  1671→          <h1 className="gf-font-display text-2xl text-gf-dark">🏆 Achievements</h1>
+  1672→          <p className="text-gf-dark/60 font-bold">{userAchievements.length}/{achievements.length} unlocked</p>
+  1673→        </div>
+  1674→        <div className="gf-card p-3 flex items-center gap-2">
+  1675→          <span className="text-2xl">🏆</span>
+  1676→          <span className="gf-font-display text-gf-dark">{userAchievements.length}</span>
+  1677→        </div>
+  1678→      </div>
+  1679→
+  1680→      {/* Progress bar */}
+  1681→      <div className="gf-card p-4">
+  1682→        <div className="h-4 bg-gf-dark/10 rounded-full overflow-hidden">
+  1683→          <motion.div
+  1684→            initial={{ width: 0 }}
+  1685→            animate={{ width: `${achievements.length ? (userAchievements.length / achievements.length) * 100 : 0}%` }}
+  1686→            transition={{ duration: 1 }}
+  1687→            className="h-full bg-gradient-to-r from-gf-teal to-gf-blue rounded-full"
+  1688→          />
+  1689→        </div>
+  1690→      </div>
+  1691→
+  1692→      {loading ? (
+  1693→        <div className="text-center py-12 text-gf-dark/40 font-bold">Loading...</div>
+  1694→      ) : (
+  1695→        categories.map(cat => {
+  1696→          const catAch = achievements.filter(a => a.category === cat)
+  1697→          if (catAch.length === 0) return null
+  1698→          return (
+  1699→            <div key={cat}>
+  1700→              <h2 className="gf-font-display text-lg text-gf-dark mb-3">{catIcons[cat]} {cat.charAt(0).toUpperCase() + cat.slice(1)}</h2>
+  1701→              <div className="grid lg:grid-cols-2 gap-3">
+  1702→                {catAch.map(ach => {
+  1703→                  const unlocked = unlockedIds.has(ach.id)
+  1704→                  return (
+  1705→                    <motion.div
+  1706→                      key={ach.id}
+  1707→                      whileHover={{ y: -2 }}
+  1708→                      className={`gf-card p-4 flex items-center gap-4 ${unlocked ? '' : 'opacity-50 grayscale'}`}
+  1709→                    >
+  1710→                      <span className="text-4xl">{unlocked ? ach.icon : '🔒'}</span>
+  1711→                      <div>
+  1712→                        <h3 className="font-bold text-gf-dark">{ach.name}</h3>
+  1713→                        <p className="text-sm text-gf-dark/50">{ach.description}</p>
+  1714→                        {unlocked && (
+  1715→                          <p className="text-xs text-gf-success mt-1">✅ Unlocked</p>
+  1716→                        )}
+  1717→                      </div>
+  1718→                    </motion.div>
+  1719→                  )
+  1720→                })}
+  1721→              </div>
+  1722→            </div>
+  1723→          )
+  1724→        })
+  1725→      )}
+  1726→    </div>
+  1727→  )
+  1728→}
+  1729→
+  1730→// ─── Friends View ───
+  1731→function FriendsView({ user }: { user: User }) {
+  1732→  const [friends, setFriends] = useState<any[]>([])
+  1733→  const [loading, setLoading] = useState(true)
+  1734→  const [search, setSearch] = useState('')
+  1735→
+  1736→  useEffect(() => {
+  1737→    api.get(`/api/friends?userId=${user.id}`).then(data => { setFriends(data); setLoading(false) }).catch(() => setLoading(false))
+  1738→  }, [user.id])
+  1739→
+  1740→  return (
+  1741→    <div className="space-y-6">
+  1742→      <h1 className="gf-font-display text-2xl text-gf-dark">👥 Friends</h1>
+  1743→
+  1744→      <div className="gf-card p-6">
+  1745→        <div className="flex items-center gap-3 mb-4">
+  1746→          <input
+  1747→            value={search}
+  1748→            onChange={e => setSearch(e.target.value)}
+  1749→            className="gf-input flex-1"
+  1750→            placeholder="Search by name or email..."
+  1751→          />
+  1752→          <button className="gf-btn text-sm">🔍 Find</button>
+  1753→        </div>
+  1754→
+  1755→        {loading ? (
+  1756→          <div className="text-center py-8 text-gf-dark/40 font-bold">Loading...</div>
+  1757→        ) : friends.length === 0 ? (
+  1758→          <div className="text-center py-8 text-gf-dark/40">
+  1759→            <p className="text-4xl mb-2">🤝</p>
+  1760→            <p className="font-bold">No friends yet</p>
+  1761→            <p className="text-sm">Search for classmates to add!</p>
+  1762→          </div>
+  1763→        ) : (
+  1764→          <div className="space-y-2">
+  1765→            {friends.map((friend: any) => (
+  1766→              <div key={friend.id} className="flex items-center justify-between p-3 rounded-xl bg-gf-light/50 border border-gf-dark/10">
+  1767→                <div className="flex items-center gap-3">
+  1768→                  <div
+  1769→                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
+  1770→                    style={{ backgroundColor: friend.avatarColor || '#14B8A6' }}
+  1771→                  >
+  1772→                    {friend.name[0].toUpperCase()}
+  1773→                  </div>
+  1774→                  <span className="font-bold text-gf-dark">{friend.name}</span>
+  1775→                </div>
+  1776→                <button className="gf-btn gf-btn-outline text-xs py-2 px-4">Challenge</button>
+  1777→              </div>
+  1778→            ))}
+  1779→          </div>
+  1780→        )}
+  1781→      </div>
+  1782→    </div>
+  1783→  )
+  1784→}
+  1785→
+  1786→// ─── Profile View ───
+  1787→function ProfileView({ user, onLogout }: { user: User; onLogout: () => void }) {
+  1788→  const [stats, setStats] = useState<{ gamesPlayed: number; totalCorrect: number; totalWrong: number; totalCoins: number; bestStreak: number } | null>(null)
+  1789→
+  1790→  useEffect(() => {
+  1791→    api.get(`/api/game-results?userId=${user.id}`).then((data: GameResult[]) => {
+  1792→      setStats({
+  1793→        gamesPlayed: data.length,
+  1794→        totalCorrect: data.reduce((s, g) => s + g.correct, 0),
+  1795→        totalWrong: data.reduce((s, g) => s + g.wrong, 0),
+  1796→        totalCoins: data.reduce((s, g) => s + g.coinsEarned, 0),
+  1797→        bestStreak: Math.max(0, ...data.map(g => g.bestStreak)),
+  1798→      })
+  1799→    }).catch(() => {})
+  1800→  }, [user.id])
+  1801→
+  1802→  const accuracy = stats ? Math.round((stats.totalCorrect / (stats.totalCorrect + stats.totalWrong)) * 100) || 0 : 0
+  1803→
+  1804→  return (
+  1805→    <div className="space-y-6 max-w-2xl mx-auto">
+  1806→      <h1 className="gf-font-display text-2xl text-gf-dark">⚙️ Profile</h1>
+  1807→
+  1808→      {/* Profile Card */}
+  1809→      <div className="gf-card p-6 text-center">
+  1810→        <div
+  1811→          className="w-20 h-20 rounded-full flex items-center justify-center text-white gf-font-display text-3xl mx-auto mb-4"
+  1812→          style={{ backgroundColor: user.avatarColor || '#14B8A6' }}
+  1813→        >
+  1814→          {user.name[0].toUpperCase()}
+  1815→        </div>
+  1816→        <h2 className="gf-font-display text-2xl text-gf-dark">{user.name}</h2>
+  1817→        <p className="text-gf-dark/50 font-bold">{user.email}</p>
+  1818→        <div className="flex justify-center gap-2 mt-3">
+  1819→          <span className="gf-chip">{user.role === 'teacher' ? '👩‍🏫 Teacher' : '🎓 Student'}</span>
+  1820→          <span className="gf-chip">🪙 {user.coins.toLocaleString()}</span>
+  1821→          <span className="gf-chip">🔥 {user.streak} day streak</span>
+  1822→        </div>
+  1823→      </div>
+  1824→
+  1825→      {/* Stats */}
+  1826→      {stats && (
+  1827→        <div className="gf-card p-6">
+  1828→          <h2 className="gf-font-display text-lg text-gf-dark mb-4">📊 Your Stats</h2>
+  1829→          <div className="grid grid-cols-2 gap-4">
+  1830→            <div className="p-3 rounded-xl bg-gf-teal/10">
+  1831→              <p className="gf-font-display text-2xl text-gf-dark">{stats.gamesPlayed}</p>
+  1832→              <p className="text-xs text-gf-dark/60 font-bold">Games Played</p>
+  1833→            </div>
+  1834→            <div className="p-3 rounded-xl bg-gf-success/10">
+  1835→              <p className="gf-font-display text-2xl text-gf-dark">{accuracy}%</p>
+  1836→              <p className="text-xs text-gf-dark/60 font-bold">Accuracy</p>
+  1837→            </div>
+  1838→            <div className="p-3 rounded-xl bg-gf-warning/10">
+  1839→              <p className="gf-font-display text-2xl text-gf-dark">{stats.totalCoins.toLocaleString()}</p>
+  1840→              <p className="text-xs text-gf-dark/60 font-bold">Total Coins</p>
+  1841→            </div>
+  1842→            <div className="p-3 rounded-xl bg-gf-danger/10">
+  1843→              <p className="gf-font-display text-2xl text-gf-dark">{stats.bestStreak}</p>
+  1844→              <p className="text-xs text-gf-dark/60 font-bold">Best Streak</p>
+  1845→            </div>
+  1846→          </div>
+  1847→        </div>
+  1848→      )}
+  1849→
+  1850→      {/* Danger Zone */}
+  1851→      <div className="gf-card p-6">
+  1852→        <h2 className="gf-font-display text-lg text-gf-dark mb-4">Account</h2>
+  1853→        <button onClick={onLogout} className="gf-btn gf-btn-red text-sm">🚪 Sign Out</button>
+  1854→      </div>
+  1855→    </div>
+  1856→  )
+  1857→}
+  1858→

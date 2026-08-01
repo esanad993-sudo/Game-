@@ -1,0 +1,402 @@
+     1→     1→<!DOCTYPE html>
+     2→     2→<html lang="en">
+     3→     3→<head>
+     4→     4→<meta charset="utf-8">
+     5→     5→<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+     6→     6→<title>TURBO RUSH! 🏁 Brain Edition</title>
+     7→     7→<link rel="preconnect" href="https://fonts.googleapis.com">
+     8→     8→<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+     9→     9→<link href="https://fonts.googleapis.com/css2?family=Titan+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+    10→    10→<style>
+    11→    11→  :root{
+    12→    12→    --navy:#17306B; --yellow:#FFD23F; --red:#FF5C4D; --sky:#9FDDF7;
+    13→    13→    --disp:'Titan One','Arial Rounded MT Bold',ui-rounded,system-ui,sans-serif;
+    14→    14→    --body:'Nunito',ui-rounded,system-ui,sans-serif;
+    15→    15→  }
+    16→    16→  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    17→    17→  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+    18→    18→  body{font-family:var(--body);background:var(--sky);color:var(--navy);
+    19→    19→    touch-action:none;-webkit-user-select:none;user-select:none}
+    20→    20→  input,textarea{-webkit-user-select:text;user-select:text}
+    21→    21→  canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+    22→    22→
+    23→    23→  .sun{position:fixed;top:-12vmin;right:-8vmin;width:46vmin;height:46vmin;border-radius:50%;
+    24→    24→    background:radial-gradient(circle,rgba(255,244,180,.95) 0%,rgba(255,220,120,.45) 34%,rgba(255,220,120,0) 70%);
+    25→    25→    pointer-events:none;z-index:2}
+    26→    26→  .vignette{position:fixed;inset:0;pointer-events:none;z-index:2;
+    27→    27→    background:radial-gradient(ellipse at 50% 42%,transparent 55%,rgba(23,48,107,.18) 100%)}
+    28→    28→  .flag{position:fixed;left:0;right:0;height:16px;z-index:3;pointer-events:none;
+    29→    29→    background:repeating-conic-gradient(var(--navy) 0% 25%,#fff 0% 50%) 0 0/16px 16px}
+    30→    30→  .flag.top{top:0}.flag.bot{bottom:0}
+    31→    31→  .hidden{display:none!important}
+    32→    32→
+    33→    33→  /* ---------- HUD ---------- */
+    34→    34→  #hud{position:fixed;inset:0;z-index:5;pointer-events:none;
+    35→    35→    padding:calc(22px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left))}
+    36→    36→  .hud-left{position:absolute;top:calc(26px + env(safe-area-inset-top));left:calc(18px + env(safe-area-inset-left))}
+    37→    37→  .score-label{font-family:var(--disp);font-size:13px;letter-spacing:2px;color:#fff;text-shadow:0 2px 0 var(--navy)}
+    38→    38→  #score{font-family:var(--disp);font-size:44px;line-height:1;color:var(--yellow);
+    39→    39→    text-shadow:-2px 0 var(--navy),2px 0 var(--navy),0 -2px var(--navy),0 3px 0 var(--navy)}
+    40→    40→  #coinBox{margin-top:6px;display:inline-flex;align-items:center;gap:7px;background:#fff;
+    41→    41→    border:3px solid var(--navy);border-radius:999px;padding:3px 12px 3px 6px;font-weight:900;font-size:17px;
+    42→    42→    box-shadow:0 3px 0 rgba(23,48,107,.3)}
+    43→    43→  .coin-ico{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#FFE9A0,#FFC93C 55%,#E8A417);
+    44→    44→    border:2px solid #B07E10;display:inline-block}
+    45→    45→  #hearts{position:absolute;top:calc(26px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
+    46→    46→    font-size:27px;letter-spacing:4px;filter:drop-shadow(0 2px 0 rgba(23,48,107,.45))}
+    47→    47→  #hearts .heart{display:inline-block;transition:transform .2s}
+    48→    48→  #hearts .heart.lost{filter:grayscale(1);opacity:.35;transform:scale(.8)}
+    49→    49→  #hearts .heart.pop{animation:heartPop .45s}
+    50→    50→  @keyframes heartPop{0%{transform:scale(1)}40%{transform:scale(1.7) rotate(-12deg)}100%{transform:scale(.8)}}
+    51→    51→  #hudName{position:absolute;top:calc(68px + env(safe-area-inset-top));left:50%;transform:translateX(-50%) rotate(-1.5deg);
+    52→    52→    font-family:var(--disp);font-size:12px;letter-spacing:2px;background:#fff;border:3px solid var(--navy);
+    53→    53→    border-radius:7px;padding:2px 12px;box-shadow:0 3px 0 rgba(23,48,107,.3);max-width:46vw;overflow:hidden;white-space:nowrap}
+    54→    54→  .hud-right{position:absolute;top:calc(24px + env(safe-area-inset-top));right:calc(16px + env(safe-area-inset-right));
+    55→    55→    display:flex;gap:10px;pointer-events:auto}
+    56→    56→  .round-btn{width:46px;height:46px;border-radius:50%;border:3px solid var(--navy);background:#fff;
+    57→    57→    font-size:19px;cursor:pointer;box-shadow:0 4px 0 rgba(23,48,107,.35);transition:transform .1s}
+    58→    58→  .round-btn:hover{transform:scale(1.08)}
+    59→    59→  .round-btn:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(23,48,107,.35)}
+    60→    60→  #speedo{position:absolute;left:calc(18px + env(safe-area-inset-left));bottom:calc(24px + env(safe-area-inset-bottom));
+    61→    61→    background:var(--navy);color:#fff;border-radius:14px;padding:8px 16px 10px;transform:rotate(-2deg);
+    62→    62→    box-shadow:0 4px 0 rgba(23,48,107,.35)}
+    63→    63→  #speedVal{font-family:var(--disp);font-size:38px;color:var(--yellow);line-height:1}
+    64→    64→  #speedo .unit{font-family:var(--disp);font-size:13px;margin-left:4px;color:#BFD2FF}
+    65→    65→  #boostBtn{position:absolute;right:calc(20px + env(safe-area-inset-right));bottom:calc(24px + env(safe-area-inset-bottom));
+    66→    66→    width:104px;height:104px;border-radius:50%;border:none;cursor:pointer;pointer-events:auto;--m:0;
+    67→    67→    background:conic-gradient(var(--yellow) calc(var(--m)*3.6deg),rgba(255,255,255,.4) 0);
+    68→    68→    box-shadow:0 6px 0 rgba(23,48,107,.35);transition:transform .1s}
+    69→    69→  #boostBtn span{position:absolute;inset:9px;border-radius:50%;background:#fff;border:3px solid var(--navy);
+    70→    70→    display:flex;align-items:center;justify-content:center;font-family:var(--disp);font-size:17px;color:var(--navy)}
+    71→    71→  #boostBtn:hover{transform:scale(1.05)}
+    72→    72→  #boostBtn:active{transform:translateY(4px) scale(.97);box-shadow:0 2px 0 rgba(23,48,107,.35)}
+    73→    73→  #boostBtn.firing span{background:var(--yellow);animation:firePulse .25s infinite alternate}
+    74→    74→  @keyframes firePulse{from{transform:scale(1)}to{transform:scale(.92)}}
+    75→    75→  .touch-hint{position:absolute;bottom:150px;font-family:var(--disp);font-size:15px;color:#fff;
+    76→    76→    text-shadow:0 2px 0 var(--navy);opacity:.85;animation:hintPulse 1.4s infinite;transition:opacity .5s}
+    77→    77→  .touch-hint.l{left:34px}.touch-hint.r{right:34px}
+    78→    78→  .touch-hint.on{opacity:1;color:var(--yellow)}
+    79→    79→  .touch-hint.off{opacity:0}
+    80→    80→  @keyframes hintPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+    81→    81→
+    82→    82→  /* ---------- popups ---------- */
+    83→    83→  #popups{position:fixed;inset:0;z-index:6;pointer-events:none;overflow:hidden}
+    84→    84→  .pop{position:absolute;transform:translate(-50%,-50%);font-family:var(--disp);font-size:24px;white-space:nowrap;
+    85→    85→    -webkit-text-stroke:4px var(--navy);paint-order:stroke fill;animation:popRise .95s ease-out forwards}
+    86→    86→  .pop.gold{color:var(--yellow)}.pop.cyan{color:#5CE1FF}.pop.red{color:var(--red)}.pop.lime{color:#8CE05A}
+    87→    87→  @keyframes popRise{0%{opacity:0;transform:translate(-50%,-50%) scale(.4)}
+    88→    88→    18%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}
+    89→    89→    100%{opacity:0;transform:translate(-50%,calc(-50% - 84px)) scale(1)}}
+    90→    90→
+    91→    91→  /* ---------- question freeze ---------- */
+    92→    92→  #qBanner{position:fixed;top:16%;left:50%;transform:translateX(-50%) rotate(-2deg);z-index:7;
+    93→    93→    font-family:var(--disp);font-size:clamp(24px,6vw,42px);color:#fff;background:var(--red);letter-spacing:1px;
+    94→    94→    border:4px solid var(--navy);border-radius:16px;padding:10px 26px;box-shadow:0 7px 0 rgba(23,48,107,.4);
+    95→    95→    animation:bannerIn .3s cubic-bezier(.2,1.6,.4,1)}
+    96→    96→  @keyframes bannerIn{from{transform:translateX(-50%) rotate(-2deg) scale(.4);opacity:0}}
+    97→    97→  #quizWrap{position:fixed;inset:0;z-index:8;display:flex;align-items:flex-end;justify-content:center;
+    98→    98→    background:rgba(23,48,107,.30);padding:0 14px calc(16px + env(safe-area-inset-bottom))}
+    99→    99→  #quizPanel{width:min(680px,96vw);background:#fff;border:4px solid var(--navy);border-radius:22px;
+   100→   100→    box-shadow:0 10px 0 rgba(23,48,107,.4);padding:14px 16px 16px;animation:panelUp .35s cubic-bezier(.2,1.4,.4,1)}
+   101→   101→  @keyframes panelUp{from{transform:translateY(70px) scale(.9);opacity:0}}
+   102→   102→  .q-top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+   103→   103→  .q-num{font-family:var(--disp);background:var(--navy);color:#fff;border-radius:10px;padding:4px 11px;font-size:15px}
+   104→   104→  .q-streak{font-family:var(--disp);color:var(--red);font-size:17px;min-width:64px}
+   105→   105→  .q-timer{flex:1;height:15px;border:3px solid var(--navy);border-radius:999px;overflow:hidden;background:#E7EEF9}
+   106→   106→  .q-timer i{display:block;height:100%;width:100%;background:var(--yellow)}
+   107→   107→  .q-timer i.low{background:var(--red)}
+   108→   108→  #qText{font-family:var(--disp);font-size:clamp(21px,4.6vw,33px);text-align:center;color:var(--navy);
+   109→   109→    padding:6px 4px 13px;line-height:1.2}
+   110→   110→  #qGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+   111→   111→  .q-tile{position:relative;display:flex;align-items:center;gap:12px;border:3px solid var(--navy);border-radius:14px;
+   112→   112→    padding:13px 14px;cursor:pointer;font-weight:900;font-size:clamp(15px,3.4vw,21px);color:#fff;font-family:var(--body);
+   113→   113→    box-shadow:0 5px 0 rgba(23,48,107,.45);transition:transform .12s,box-shadow .12s,filter .12s;
+   114→   114→    animation:tileIn .32s backwards;text-align:left}
+   115→   115→  .q-tile:nth-child(1){background:var(--red);animation-delay:.02s}
+   116→   116→  .q-tile:nth-child(2){background:#2FA8FF;animation-delay:.07s}
+   117→   117→  .q-tile:nth-child(3){background:var(--yellow);color:var(--navy);animation-delay:.12s}
+   118→   118→  .q-tile:nth-child(4){background:#43C95D;animation-delay:.17s}
+   119→   119→  @keyframes tileIn{from{transform:translateY(26px) scale(.85);opacity:0}}
+   120→   120→  .q-tile:hover{transform:translateY(-3px) scale(1.02);box-shadow:0 8px 0 rgba(23,48,107,.45);filter:brightness(1.08)}
+   121→   121→  .q-tile:active{transform:translateY(3px);box-shadow:0 2px 0 rgba(23,48,107,.45)}
+   122→   122→  .q-shape{flex:0 0 30px;display:flex;align-items:center;justify-content:center}
+   123→   123→  .shape{display:block}
+   124→   124→  .sh-tri{width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-bottom:24px solid currentColor}
+   125→   125→  .sh-dia{width:19px;height:19px;background:currentColor;transform:rotate(45deg)}
+   126→   126→  .sh-cir{width:23px;height:23px;border-radius:50%;background:currentColor}
+   127→   127→  .sh-sq{width:21px;height:21px;background:currentColor}
+   128→   128→  .q-key{position:absolute;top:5px;right:9px;font-family:var(--disp);font-size:11px;opacity:.7}
+   129→   129→  .q-tile.lock{pointer-events:none}
+   130→   130→  .q-tile.correct{outline:5px solid #fff;animation:correctPulse .55s}
+   131→   131→  .q-tile.reveal{animation:revealGlow .9s}
+   132→   132→  .q-tile.wrong{animation:wrongShake .45s;filter:saturate(.35) brightness(.75)}
+   133→   133→  @keyframes correctPulse{0%{transform:scale(1)}40%{transform:scale(1.07)}100%{transform:scale(1)}}
+   134→   134→  @keyframes revealGlow{0%,100%{box-shadow:0 5px 0 rgba(23,48,107,.45)}50%{box-shadow:0 0 0 7px #fff,0 5px 0 rgba(23,48,107,.45)}}
+   135→   135→  @keyframes wrongShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-9px)}40%{transform:translateX(9px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}
+   136→   136→
+   137→   137→  /* ---------- overlays ---------- */
+   138→   138→  .overlay{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;
+   139→   139→    gap:13px;padding:36px 20px;background:radial-gradient(ellipse at 50% 30%,rgba(159,221,247,0) 30%,rgba(23,48,107,.34) 100%)}
+   140→   140→  .title{font-family:var(--disp);font-size:clamp(44px,10.5vw,92px);line-height:.95;text-align:center;color:var(--yellow);
+   141→   141→    transform:rotate(-2.5deg);animation:titleFloat 3.2s ease-in-out infinite;
+   142→   142→    text-shadow:-3px 0 var(--navy),3px 0 var(--navy),0 -3px var(--navy),0 5px 0 var(--navy),0 10px 0 rgba(23,48,107,.28)}
+   143→   143→  .title em{font-style:normal;color:#fff;display:block;font-size:.62em;letter-spacing:2px}
+   144→   144→  @keyframes titleFloat{0%,100%{transform:rotate(-2.5deg) translateY(0)}50%{transform:rotate(-1.5deg) translateY(-9px)}}
+   145→   145→  .ribbon{font-family:var(--disp);font-size:14px;background:#43C95D;color:#fff;border:3px solid var(--navy);
+   146→   146→    border-radius:10px;padding:4px 15px;transform:rotate(2deg);box-shadow:0 4px 0 rgba(23,48,107,.3);letter-spacing:1px}
+   147→   147→  .tag{background:#fff;border:3px solid var(--navy);border-radius:999px;padding:8px 20px;font-weight:900;font-size:15px;
+   148→   148→    box-shadow:0 4px 0 rgba(23,48,107,.3);transform:rotate(1deg)}
+   149→   149→  .garage{background:#fff;border:3px solid var(--navy);border-radius:18px;padding:12px 18px 14px;
+   150→   150→    box-shadow:0 6px 0 rgba(23,48,107,.3);text-align:center;transform:rotate(-1deg)}
+   151→   151→  .garage-label{font-family:var(--disp);font-size:13px;letter-spacing:2px;margin-bottom:9px}
+   152→   152→  #swatches{display:flex;gap:11px;justify-content:center}
+   153→   153→  .swatch{width:42px;height:42px;border-radius:50%;border:3px solid var(--navy);cursor:pointer;
+   154→   154→    box-shadow:inset -4px -5px 0 rgba(0,0,0,.18),0 3px 0 rgba(23,48,107,.3);transition:transform .15s}
+   155→   155→  .swatch:hover{transform:scale(1.14)}
+   156→   156→  .swatch.sel{transform:scale(1.22);box-shadow:inset -4px -5px 0 rgba(0,0,0,.18),0 0 0 4px #fff,0 0 0 7px var(--navy)}
+   157→   157→
+   158→   158→  .plate{display:inline-flex;flex-direction:column;align-items:center;background:#fff;border:4px solid var(--navy);
+   159→   159→    border-radius:12px;padding:4px 18px 7px;box-shadow:0 5px 0 rgba(23,48,107,.35),inset 0 0 0 2px #DCE7F7;
+   160→   160→    transform:rotate(-1.5deg);position:relative;transition:border-color .2s}
+   161→   161→  .plate::before,.plate::after{content:'';position:absolute;top:8px;width:8px;height:8px;border-radius:50%;
+   162→   162→    background:radial-gradient(circle at 35% 30%,#B9C9E4,var(--navy))}
+   163→   163→  .plate::before{left:8px}.plate::after{right:8px}
+   164→   164→  .plate-cap{font-family:var(--disp);font-size:9px;letter-spacing:3px;color:#8CA0C8}
+   165→   165→  #nameInput{border:none;outline:none;background:transparent;text-align:center;font-family:var(--disp);
+   166→   166→    font-size:26px;letter-spacing:3px;color:var(--navy);text-transform:uppercase;width:min(58vw,250px);caret-color:var(--red)}
+   167→   167→  #nameInput::placeholder{color:#B9C9E4}
+   168→   168→  .plate.err{border-color:var(--red);animation:plateShake .45s}
+   169→   169→  @keyframes plateShake{0%,100%{transform:rotate(-1.5deg) translateX(0)}20%{transform:rotate(-1.5deg) translateX(-9px)}
+   170→   170→    40%{transform:rotate(-1.5deg) translateX(9px)}60%{transform:rotate(-1.5deg) translateX(-6px)}80%{transform:rotate(-1.5deg) translateX(6px)}}
+   171→   171→
+   172→   172→  .mode-row{display:flex;gap:6px;align-items:center;background:#fff;border:3px solid var(--navy);border-radius:999px;
+   173→   173→    padding:5px 8px;box-shadow:0 4px 0 rgba(23,48,107,.3);transform:rotate(1deg)}
+   174→   174→  .mode-label{font-family:var(--disp);font-size:11px;letter-spacing:1px;padding:0 6px}
+   175→   175→  .mode-btn{font-family:var(--disp);font-size:13px;border:3px solid transparent;background:transparent;border-radius:999px;
+   176→   176→    padding:6px 12px;cursor:pointer;color:#8CA0C8;transition:all .15s}
+   177→   177→  .mode-btn:hover{transform:translateY(-2px)}
+   178→   178→  .mode-btn.sel{background:var(--navy);color:#fff}
+   179→   179→  .set-chip{font-weight:900;font-size:12.5px;background:#E5F8EA;color:#1E7A3C;border:2px solid #2EAF57;
+   180→   180→    border-radius:999px;padding:4px 14px;transform:rotate(-1deg)}
+   181→   181→  .big-btn{font-family:var(--disp);font-size:clamp(22px,5vw,30px);color:var(--navy);background:var(--yellow);
+   182→   182→    border:4px solid var(--navy);border-radius:999px;padding:15px 42px;cursor:pointer;
+   183→   183→    box-shadow:0 7px 0 var(--navy);transition:transform .12s,box-shadow .12s;animation:btnPulse 1.6s infinite}
+   184→   184→  .big-btn:hover{transform:translateY(-2px) scale(1.03)}
+   185→   185→  .big-btn:active{transform:translateY(5px);box-shadow:0 2px 0 var(--navy)}
+   186→   186→  @keyframes btnPulse{0%,100%{box-shadow:0 7px 0 var(--navy),0 0 0 0 rgba(255,210,63,.7)}
+   187→   187→    50%{box-shadow:0 7px 0 var(--navy),0 0 0 16px rgba(255,210,63,0)}}
+   188→   188→  .med-btn{font-family:var(--disp);font-size:18px;color:#fff;background:var(--navy);border:3px solid var(--navy);
+   189→   189→    border-radius:999px;padding:12px 30px;cursor:pointer;box-shadow:0 5px 0 rgba(23,48,107,.4);transition:transform .12s}
+   190→   190→  .med-btn:hover{transform:translateY(-2px)}
+   191→   191→  .med-btn:active{transform:translateY(4px);box-shadow:0 1px 0 rgba(23,48,107,.4)}
+   192→   192→  .med-btn.alt{background:#fff;color:var(--navy)}
+   193→   193→  .controls-hint{color:#fff;font-weight:800;font-size:13px;text-align:center;text-shadow:0 2px 0 rgba(23,48,107,.5);max-width:560px;line-height:1.55}
+   194→   194→  .controls-hint b{color:var(--yellow)}
+   195→   195→  .dedication{color:#fff;font-weight:900;font-size:13px;letter-spacing:.5px;text-shadow:0 2px 0 rgba(23,48,107,.5);
+   196→   196→    background:rgba(23,48,107,.35);border-radius:999px;padding:5px 16px}
+   197→   197→  .gear-btn{position:absolute;top:calc(20px + env(safe-area-inset-top));right:calc(20px + env(safe-area-inset-right));
+   198→   198→    width:52px;height:52px;border-radius:50%;border:3px solid var(--navy);background:#fff;font-size:24px;cursor:pointer;
+   199→   199→    box-shadow:0 4px 0 rgba(23,48,107,.35);transition:transform .35s cubic-bezier(.3,1.6,.5,1);display:flex;align-items:center;justify-content:center}
+   200→   200→  .gear-btn:hover{transform:rotate(120deg) scale(1.12)}
+   201→   201→  .gear-btn:active{transform:rotate(120deg) scale(.95)}
+   202→   202→
+   203→   203→  .panel{background:#fff;border:4px solid var(--navy);border-radius:22px;padding:24px 30px;text-align:center;
+   204→   204→    box-shadow:0 8px 0 rgba(23,48,107,.35);max-width:min(92vw,440px);position:relative}
+   205→   205→  .panel h2{font-family:var(--disp);font-size:clamp(28px,7vw,42px);color:var(--red);
+   206→   206→    text-shadow:-2px 0 var(--navy),2px 0 var(--navy),0 -2px var(--navy),0 3px 0 var(--navy);transform:rotate(-2deg)}
+   207→   207→  .panel h2.blue{color:#2FA8FF}
+   208→   208→  .panel h2.green{color:#2EAF57}
+   209→   209→  .final-score{font-family:var(--disp);font-size:60px;color:var(--yellow);line-height:1.05;margin:4px 0 2px;
+   210→   210→    text-shadow:-2px 0 var(--navy),2px 0 var(--navy),0 -2px var(--navy),0 4px 0 var(--navy)}
+   211→   211→  .plate-mini{display:inline-block;font-family:var(--disp);font-size:14px;letter-spacing:2px;background:#fff;
+   212→   212→    border:3px solid var(--navy);border-radius:8px;padding:3px 16px;transform:rotate(-2deg);
+   213→   213→    box-shadow:0 3px 0 rgba(23,48,107,.3);margin-bottom:2px}
+   214→   214→  .stat-row{display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:15.5px;
+   215→   215→    border-bottom:2px dashed #D7E2F5;padding:5px 2px}
+   216→   216→  .new-best{display:inline-block;font-family:var(--disp);font-size:13px;background:var(--red);color:#fff;
+   217→   217→    border-radius:8px;padding:2px 9px;margin-left:8px;transform:rotate(-4deg);animation:wiggle .5s infinite alternate}
+   218→   218→  @keyframes wiggle{from{transform:rotate(-6deg) scale(1)}to{transform:rotate(4deg) scale(1.12)}}
+   219→   219→  .btn-row{display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+   220→   220→  .panel .flagline{height:12px;border-radius:6px;margin:-4px 0 10px;
+   221→   221→    background:repeating-conic-gradient(var(--navy) 0% 25%,#fff 0% 50%) 0 0/12px 12px}
+   222→   222→
+   223→   223→  #mistakesBox{margin-top:12px;border:3px solid var(--navy);border-radius:14px;overflow:hidden;text-align:left}
+   224→   224→  .mb-head{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--navy);color:#fff;
+   225→   225→    font-family:var(--disp);font-size:12px;letter-spacing:1px;padding:7px 12px}
+   226→   226→  #copyReport{font-family:var(--disp);font-size:11px;background:var(--yellow);color:var(--navy);border:2px solid #fff;
+   227→   227→    border-radius:999px;padding:3px 11px;cursor:pointer;transition:transform .12s}
+   228→   228→  #copyReport:hover{transform:scale(1.08)}
+   229→   229→  #mistakesList{max-height:148px;overflow-y:auto;padding:8px 12px;background:#F4F8FF}
+   230→   230→  .mistake{padding:7px 2px;border-bottom:2px dashed #D7E2F5;animation:mistIn .35s backwards}
+   231→   231→  .mistake:last-child{border-bottom:none}
+   232→   232→  @keyframes mistIn{from{opacity:0;transform:translateX(-12px)}}
+   233→   233→  .m-q{font-weight:900;font-size:14px;margin-bottom:3px}
+   234→   234→  .m-a{display:inline-block;font-weight:800;font-size:12.5px;border-radius:7px;padding:1px 8px;margin:1px 4px 1px 0}
+   235→   235→  .m-a.bad{background:#FFE1DE;color:#C0392B}
+   236→   236→  .m-a.good{background:#DFF6E6;color:#1E7A3C}
+   237→   237→  .perfect{font-weight:900;color:#1E7A3C;text-align:center;padding:10px 4px;font-size:14px}
+   238→   238→
+   239→   239→  #teach{z-index:12}
+   240→   240→  .teach-panel{max-width:min(94vw,580px);max-height:92vh;overflow-y:auto;padding:22px 24px}
+   241→   241→  .teach-sub{font-weight:800;font-size:13.5px;color:#5A6E96;margin:2px 0 10px}
+   242→   242→  .fmt{background:#F4F8FF;border:2px dashed #B9C9E4;border-radius:10px;padding:8px 12px;margin-bottom:10px;text-align:left}
+   243→   243→  .fmt code{display:block;font-weight:900;font-size:13px;color:var(--navy);font-family:ui-monospace,Menlo,Consolas,monospace}
+   244→   244→  .fmt span{font-size:11.5px;font-weight:800;color:#8CA0C8}
+   245→   245→  #csvBox{width:100%;height:112px;resize:vertical;border:3px solid var(--navy);border-radius:12px;padding:9px 11px;
+   246→   246→    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;font-weight:700;color:var(--navy);outline:none;background:#fff}
+   247→   247→  #csvBox:focus{box-shadow:0 0 0 4px rgba(47,168,255,.35)}
+   248→   248→  #dropZone{margin-top:9px;border:3px dashed #B9C9E4;border-radius:12px;padding:13px;font-weight:900;font-size:13.5px;
+   249→   249→    color:#5A6E96;cursor:pointer;transition:all .15s}
+   250→   250→  #dropZone:hover{border-color:#2FA8FF;color:#2FA8FF}
+   251→   251→  #dropZone.over{background:#EAF3FF;border-color:#2FA8FF;color:#2FA8FF;transform:scale(1.02)}
+   252→   252→  .import-msg{min-height:22px;font-weight:900;font-size:14px;margin-top:9px}
+   253→   253→  .import-msg.ok{color:#1E9E4A}.import-msg.bad{color:var(--red)}
+   254→   254→  .import-msg.flash{animation:msgFlash .35s}
+   255→   255→  @keyframes msgFlash{from{transform:scale(.85);opacity:0}}
+   256→   256→  .import-errs{font-size:11.5px;font-weight:800;color:#C0392B;margin-top:3px;max-height:64px;overflow-y:auto;text-align:left}
+   257→   257→  .close-x{position:absolute;top:10px;right:12px;width:36px;height:36px;border-radius:50%;border:3px solid var(--navy);
+   258→   258→    background:#fff;font-weight:900;font-size:16px;cursor:pointer;box-shadow:0 3px 0 rgba(23,48,107,.3);transition:transform .12s}
+   259→   259→  .close-x:hover{transform:rotate(90deg) scale(1.1)}
+   260→   260→
+   261→   261→  /* compact layout for Chromebook 1366×768 & shorter windows */
+   262→   262→  @media (max-height:730px){
+   263→   263→    .overlay{gap:8px;padding:26px 16px}
+   264→   264→    .title{font-size:clamp(36px,8vw,62px)}
+   265→   265→    .tag{font-size:13px;padding:5px 16px}
+   266→   266→    .garage{padding:7px 14px 9px}
+   267→   267→    .garage-label{font-size:11px;margin-bottom:6px}
+   268→   268→    .swatch{width:32px;height:32px}
+   269→   269→    #nameInput{font-size:19px;width:min(52vw,210px)}
+   270→   270→    .big-btn{padding:11px 34px;font-size:21px}
+   271→   271→    .controls-hint{font-size:11.5px;line-height:1.35}
+   272→   272→    .dedication{font-size:11px;padding:3px 12px}
+   273→   273→    .ribbon{font-size:12px}
+   274→   274→    .mode-btn{font-size:12px;padding:5px 10px}
+   275→   275→  }
+   276→   276→  #nogl{position:fixed;inset:0;z-index:99;display:flex;align-items:center;justify-content:center;
+   277→   277→    background:var(--sky);font-weight:900;font-size:18px;padding:30px;text-align:center}
+   278→   278→</style>
+   279→   279→</head>
+   280→   280→<body>
+   281→   281→<canvas id="c"></canvas>
+   282→   282→<div class="sun"></div><div class="vignette"></div>
+   283→   283→<div class="flag top"></div><div class="flag bot"></div>
+   284→   284→
+   285→   285→<div id="hud" class="hidden">
+   286→   286→  <div class="hud-left">
+   287→   287→    <div class="score-label">SCORE</div>
+   288→   288→    <div id="score">0</div>
+   289→   289→    <div id="coinBox"><span class="coin-ico"></span><span id="coinCount">0</span></div>
+   290→   290→  </div>
+   291→   291→  <div id="hearts"></div>
+   292→   292→  <div id="hudName">DRIVER</div>
+   293→   293→  <div class="hud-right">
+   294→   294→    <button class="round-btn" id="qBtn" title="Speed mode (for slower computers)">⚡</button>
+   295→   295→    <button class="round-btn" id="fsBtn" title="Fullscreen (F)">⛶</button>
+   296→   296→    <button class="round-btn" id="pauseBtn" title="Pause (P)">⏸</button>
+   297→   297→    <button class="round-btn" id="muteBtn" title="Sound (M)">🔊</button>
+   298→   298→  </div>
+   299→   299→  <div id="speedo"><span id="speedVal">0</span><span class="unit">km/h</span></div>
+   300→   300→  <button id="boostBtn"><span>BOOST</span></button>
+   301→   301→  <div class="touch-hint l" id="hintL">◀ HOLD</div>
+   302→   302→  <div class="touch-hint r" id="hintR">HOLD ▶</div>
+   303→   303→</div>
+   304→   304→
+   305→   305→<div id="popups"></div>
+   306→   306→<div id="qBanner" class="hidden">❓ QUESTION INCOMING!</div>
+   307→   307→
+   308→   308→<div id="quizWrap" class="hidden">
+   309→   309→  <div id="quizPanel">
+   310→   310→    <div class="q-top">
+   311→   311→      <span class="q-num" id="qNum">Q1</span>
+   312→   312→      <span class="q-streak" id="qStreak"></span>
+   313→   313→      <div class="q-timer"><i id="qTimerFill"></i></div>
+   314→   314→    </div>
+   315→   315→    <div id="qText"></div>
+   316→   316→    <div id="qGrid"></div>
+   317→   317→  </div>
+   318→   318→</div>
+   319→   319→
+   320→   320→<div id="menu" class="overlay">
+   321→   321→  <button class="gear-btn" id="gearBtn" title="Teacher tools — import questions">⚙️</button>
+   322→   322→  <div class="ribbon">🧠 BRAIN EDITION</div>
+   323→   323→  <h1 class="title">TURBO<em>RUSH!</em></h1>
+   324→   324→  <div class="tag">Race hard · Answer smart · Hit the ramps!</div>
+   325→   325→  <label class="plate" id="plate">
+   326→   326→    <span class="plate-cap">★ DRIVER NAME ★</span>
+   327→   327→    <input id="nameInput" maxlength="14" placeholder="TYPE NAME" autocomplete="off" spellcheck="false">
+   328→   328→  </label>
+   329→   329→  <div class="garage">
+   330→   330→    <div class="garage-label">🔧 PICK YOUR RIDE 🔧</div>
+   331→   331→    <div id="swatches"></div>
+   332→   332→  </div>
+   333→   333→  <div class="mode-row">
+   334→   334→    <span class="mode-label">WRONG ANSWER =</span>
+   335→   335→    <button class="mode-btn sel" id="modeSlow">🐢 SLOW DOWN</button>
+   336→   336→    <button class="mode-btn" id="modeHeart">💔 LOSE HEART</button>
+   337→   337→  </div>
+   338→   338→  <div class="set-chip hidden" id="setChip"></div>
+   339→   339→  <button class="big-btn" id="startBtn">🏁 START ENGINE</button>
+   340→   340→  <div class="controls-hint">Steer <b>← →</b> (or hold the screen edges) · <b>SPACE</b> = BOOST · <b>ENTER</b> = start · <b>F</b> = fullscreen<br>
+   341→   341→    ❓ Questions: <b>click / tap</b> an answer — or <b>↑ ← ↓ →</b>, <b>1–4</b>, <b>A–D</b>. Correct = TURBO + coins!</div>
+   342→   342→  <div class="dedication">made with 💛 for the world's coolest little brother</div>
+   343→   343→</div>
+   344→   344→
+   345→   345→<div id="teach" class="overlay hidden">
+   346→   346→  <div class="panel teach-panel">
+   347→   347→    <button class="close-x" id="teachClose">✕</button>
+   348→   348→    <div class="flagline"></div>
+   349→   349→    <h2 class="blue" style="font-size:30px">⚙️ TEACHER TOOLS</h2>
+   350→   350→    <p class="teach-sub">Paste questions straight from Google Sheets or Excel — one question per line.</p>
+   351→   351→    <div class="fmt">
+   352→   352→      <code>What is 5 + 5?, 9, 10, 11, 12, 2</code>
+   353→   353→      <span>Last column = correct answer (1–4 or A–D) · 2–4 answers per question · tabs, commas &amp; semicolons all work · header rows are skipped</span>
+   354→   354→    </div>
+   355→   355→    <textarea id="csvBox" spellcheck="false"></textarea>
+   356→   356→    <div id="dropZone">📂 Drop a .csv / .txt file here — or click to browse</div>
+   357→   357→    <input type="file" id="filePick" accept=".csv,.tsv,.txt" class="hidden">
+   358→   358→    <div id="importMsg" class="import-msg"></div>
+   359→   359→    <div class="btn-row">
+   360→   360→      <button class="big-btn" id="loadBtn" style="font-size:18px;padding:12px 26px;animation:none">📥 LOAD QUESTIONS</button>
+   361→   361→      <button class="med-btn alt" id="tplBtn" style="font-size:14px;padding:10px 16px">📋 COPY TEMPLATE</button>
+   362→   362→      <button class="med-btn alt" id="dlBtn" style="font-size:14px;padding:10px 16px">⬇️ .CSV FILE</button>
+   363→   363→      <button class="med-btn alt" id="clearSetBtn" style="font-size:14px;padding:10px 16px">🗑 USE DEFAULTS</button>
+   364→   364→    </div>
+   365→   365→  </div>
+   366→   366→</div>
+   367→   367→
+   368→   368→<div id="gameover" class="overlay hidden">
+   369→   369→  <div class="panel">
+   370→   370→    <div class="flagline"></div>
+   371→   371→    <div class="plate-mini" id="goPlate">DRIVER</div>
+   372→   372→    <h2 id="goTitle">WRECKED!</h2>
+   373→   373→    <div class="final-score" id="finalScore">0</div>
+   374→   374→    <div class="stat-row"><span>🧠 Correct answers</span><b id="goQuiz">0/0</b></div>
+   375→   375→    <div class="stat-row"><span>🔥 Best streak</span><b id="goStreak">×0</b></div>
+   376→   376→    <div class="stat-row"><span>🪙 Coins</span><b id="goCoins">0</b></div>
+   377→   377→    <div class="stat-row"><span>📏 Distance</span><b id="goDist">0 m</b></div>
+   378→   378→    <div class="stat-row"><span>🏆 Best</span><b><span id="goBest">0</span><span class="new-best hidden" id="newBest">NEW!</span></b></div>
+   379→   379→    <div id="mistakesBox">
+   380→   380→      <div class="mb-head"><span>📝 MISTAKES TO REVIEW</span><button id="copyReport">📋 COPY REPORT</button></div>
+   381→   381→      <div id="mistakesList"></div>
+   382→   382→    </div>
+   383→   383→    <div class="btn-row"><button class="big-btn" id="againBtn" style="font-size:20px;padding:13px 34px">🔁 RACE AGAIN</button></div>
+   384→   384→  </div>
+   385→   385→</div>
+   386→   386→
+   387→   387→<div id="paused" class="overlay hidden">
+   388→   388→  <div class="panel">
+   389→   389→    <div class="flagline"></div>
+   390→   390→    <h2 class="blue">PIT STOP</h2>
+   391→   391→    <div class="btn-row">
+   392→   392→      <button class="med-btn" id="resumeBtn">▶ RESUME</button>
+   393→   393→      <button class="med-btn alt" id="restartBtn">🔁 RESTART</button>
+   394→   394→      <button class="med-btn alt" id="perfBtn">⚡ SPEED MODE: OFF</button>
+   395→   395→    </div>
+   396→   396→  </div>
+   397→   397→</div>
+   398→   398→
+   399→   399→<div id="nogl" class="hidden">Oh no — this browser can't do 3D 😢<br>Try Chrome or Safari!</div>
+   400→   400→
+   401→
+   402→[showing lines 1-400 of 1641; use offset=401 with limit to continue reading]
