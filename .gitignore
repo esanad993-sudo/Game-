@@ -52,3 +52,6 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# built engine demo artifact (public/demo-game.html is the committed deliverable)
+public/demo-game.js
