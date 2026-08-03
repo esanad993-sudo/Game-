@@ -1,21 +1,39 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import bcrypt from "bcryptjs"
+import { z } from "zod"
+
+const LoginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+})
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password } = await req.json()
-
-    if (!email) {
-      return NextResponse.json({ error: "Email is required" }, { status: 400 })
+    const body = await req.json().catch(() => null)
+    const parsed = LoginSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid email or password" }, { status: 400 })
     }
 
+    const email = parsed.data.email.toLowerCase().trim()
     const user = await db.user.findUnique({ where: { email } })
-
     if (!user) {
-      return NextResponse.json({ error: "No account found with that email" }, { status: 401 })
+      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
     }
 
-    // Update last login timestamp
+    const account = await db.account.findFirst({
+      where: { userId: user.id, provider: "credentials" },
+    })
+    if (!account?.passwordHash) {
+      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
+    }
+
+    const ok = await bcrypt.compare(parsed.data.password, account.passwordHash)
+    if (!ok) {
+      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
+    }
+
     await db.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },

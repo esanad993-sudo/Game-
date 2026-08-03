@@ -169,7 +169,7 @@ export default function Home() {
       <div className="min-h-screen flex items-center justify-center gf-bg">
         <motion.div
           animate={{ scale: [1, 1.1, 1] }}
-          transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+          transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" as const }}
         >
           <img src="/logo.jpeg" alt="GameForge" className="w-20 h-20 rounded-2xl" />
         </motion.div>
@@ -734,7 +734,7 @@ function DashboardView({ user, setView }: { user: User; setView: (v: View) => vo
 
   const itemVariants = {
     hidden: { opacity: 0, y: 20 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
+    show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' as const } },
   }
 
   return (
@@ -788,7 +788,7 @@ function DashboardView({ user, setView }: { user: User; setView: (v: View) => vo
                   className="h-full bg-gf-warning rounded-full"
                   initial={{ width: 0 }}
                   animate={{ width: `${xpPct}%` }}
-                  transition={{ duration: 1, delay: 0.5, ease: 'easeOut' }}
+                  transition={{ duration: 1, delay: 0.5, ease: 'easeOut' as const }}
                 />
               </div>
               <span className="text-white/80 font-bold text-xs">{xpInLevel}/500</span>
@@ -972,7 +972,7 @@ function DashboardView({ user, setView }: { user: User; setView: (v: View) => vo
             <div className="text-center py-8">
               <motion.div
                 animate={{ y: [0, -8, 0] }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' as const }}
                 className="text-5xl mb-3"
               >
                 🎮
@@ -1126,7 +1126,7 @@ function DashboardView({ user, setView }: { user: User; setView: (v: View) => vo
             <motion.div
               className="w-12 h-12 rounded-xl bg-gf-warning/20 flex items-center justify-center text-2xl border-2 border-gf-warning/30"
               animate={{ rotate: [0, 5, -5, 0] }}
-              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' as const }}
             >
               🎯
             </motion.div>
@@ -1148,7 +1148,7 @@ function DashboardView({ user, setView }: { user: User; setView: (v: View) => vo
                   className="h-full bg-gradient-to-r from-gf-warning to-gf-teal rounded-full"
                   initial={{ width: 0 }}
                   animate={{ width: `${dailyProgressPct}%` }}
-                  transition={{ duration: 1, delay: 0.8, ease: 'easeOut' }}
+                  transition={{ duration: 1, delay: 0.8, ease: 'easeOut' as const }}
                 />
               </div>
             </div>

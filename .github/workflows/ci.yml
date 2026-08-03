@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Lint
+        run: bun run lint
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Generate Prisma client
+        run: bun run db:generate
+        env:
+          DATABASE_URL: "file:./db/ci.db"
+      - name: Build
+        run: bun run build
+        env:
+          DATABASE_URL: "file:./db/ci.db"
+          NEXTAUTH_SECRET: "ci-secret-not-used-in-production-32-chars-min"
+          NEXTAUTH_URL: "http://localhost:3000"

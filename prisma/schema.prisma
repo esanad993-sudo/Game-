@@ -22,6 +22,9 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
+  // Used only when type == "credentials" (email + password auth).
+  // OAuth accounts leave this null.
+  passwordHash      String?
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
@@ -72,6 +75,8 @@ model User {
   friendsTo      Friendship[] @relation("UserFriendOf")
   notifications  Notification[]
   gameResults    GameResult[]
+  projects       Project[]
+  projectComments ProjectComment[]
 }
 
 // ─── Question Sets ───
@@ -268,4 +273,55 @@ model Notification {
   read      Boolean  @default(false)
   link      String?
   createdAt DateTime @default(now())
+}
+
+// ─── Projects (Game Builder scenes) ───
+//
+// Anonymous-edit pattern: every project has a random `editToken` returned
+// only on creation. Anyone with the token can edit/delete; anyone can
+// read a public project. If `authorId` is set, the author can also edit
+// without the token (via NextAuth session).
+
+model Project {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  // The full .gfpkg JSON (version, name, scene, devices, wires, scripts).
+  // Stored as TEXT — SQLite JSON queries work via json_extract().
+  data        String
+  // Random 32-char token returned ONLY on create + (with the right
+  // permission) on update. Stored in localStorage as `gf:edit:${id}`.
+  editToken   String   @unique
+  // The current public version's data — null when unpublished.
+  // Reading published data is unauthenticated; reading draft `data`
+  // requires editToken or being the author.
+  publishedData String?
+  isPublic    Boolean  @default(false)
+  // Bumped each time the project is published. Lets clients cache
+  // publishedData keyed by id+version.
+  version     Int      @default(0)
+  authorId    String?
+  author      User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  // Counters for the gallery UI. Cheap to update on publish.
+  playCount   Int      @default(0)
+  forkCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  comments    ProjectComment[]
+
+  @@index([isPublic, updatedAt])
+  @@index([authorId])
+}
+
+model ProjectComment {
+  id         String   @id @default(cuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  authorId   String?
+  author     User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  authorName String   @default("Anonymous")
+  body       String
+  createdAt  DateTime @default(now())
+
+  @@index([projectId, createdAt])
 }

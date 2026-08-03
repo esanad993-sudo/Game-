@@ -17,26 +17,25 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null
 
-        const user = await db.user.findUnique({
-          where: { email: credentials.email },
-        })
-
+        const email = credentials.email.toLowerCase().trim()
+        const user = await db.user.findUnique({ where: { email } })
         if (!user) return null
 
-        // For users created via Google who don't have a password
         const account = await db.account.findFirst({
-          where: { userId: user.id, type: "oauth" },
+          where: { userId: user.id, provider: "credentials" },
         })
-        if (account && !user.emailVerified) {
-          // OAuth user trying credentials — just return them
-          return { id: user.id, name: user.name, email: user.email, role: user.role, image: user.image }
-        }
+        if (!account || !account.passwordHash) return null
 
-        // Simple password check — in production, use bcrypt
-        // For now, we'll store passwords in a separate table or just compare
-        // Since we're using Prisma adapter, credentials are handled differently
-        // Let's just return the user for now — proper password auth needs a password field
-        return { id: user.id, name: user.name, email: user.email, role: user.role, image: user.image }
+        const ok = await bcrypt.compare(credentials.password, account.passwordHash)
+        if (!ok) return null
+
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          image: user.image,
+        }
       },
     }),
   ],

@@ -26,7 +26,7 @@ export class QuizEngine {
       coins: 0,
       timeRemaining: timePerQuestion,
       powerUps: [],
-      modeData: {},
+      modeData: { bestStreak: 0 },
     }
   }
 
@@ -61,6 +61,8 @@ export class QuizEngine {
     if (isCorrect) {
       this.state.correct++
       this.state.streak++
+      const bestStreak = Math.max(this.state.modeData.bestStreak ?? 0, this.state.streak)
+      this.state.modeData.bestStreak = bestStreak
       const timeBonus = Math.max(0, (this.state.timeRemaining ?? 0) * 2)
       const streakBonus = Math.min(this.state.streak, 5) * 10
       const points = 100 + timeBonus + streakBonus
@@ -118,7 +120,7 @@ export class QuizEngine {
       score: this.state.score,
       correct: this.state.correct,
       wrong: this.state.wrong,
-      bestStreak: this.state.streak,
+      bestStreak: this.state.modeData.bestStreak ?? this.state.streak,
       coinsEarned: this.state.coins,
       duration: 0, // filled by caller
       modeData: this.state.modeData,
